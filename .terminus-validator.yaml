@@ -1,0 +1,132 @@
+# Terminus-2 Task Validator Configuration
+# For local task development in ~/snorkel-local
+
+# =====================
+# Core Rules
+# =====================
+
+disabled_rules: []
+
+severity_overrides:
+  # Stricter for production tasks
+  test-dir-default: error
+  no-web-fetching: error
+
+# =====================
+# File Exclusions
+# =====================
+
+file_excludes:
+  # Python/build artifacts
+  - "**/.venv/**"
+  - "**/__pycache__/**"
+  - "**/.ruff_cache/**"
+  - "**/.pytest_cache/**"
+  
+  # Harbor artifacts
+  - "**/jobs/**"
+  - "**/.harbor/**"
+  
+  # macOS
+  - "**/.DS_Store"
+  
+  # Zip files
+  - "**/*.zip"
+  
+  # Git
+  - "**/.git/**"
+
+# =====================
+# Harbor Rules
+# =====================
+
+custom_rules:
+  # Load Harbor rules from installed validator
+  - path: "rules/harbor_rules.py"
+    enabled: true
+
+# Enable ruff by default (fast)
+enabled_rules:
+  - ruff-lint
+
+# Disable expensive tests by default (run manually)
+# oracle-test: false
+# harbor-quality-check: false
+# difficulty-test: false
+
+# =====================
+# Output
+# =====================
+
+output:
+  format: "text"
+  color: true
+  show_suggestions: true
+  group_by_file: true
+
+# =====================
+# Git Integration (NO CI/CD)
+# =====================
+
+integrations:
+  # Pre-commit hook (optional, runs locally only)
+  pre_commit:
+    enabled: false  # Set to true if you want pre-commit validation
+    fail_on_warnings: false
+    run_oracle_test: false  # Too slow for pre-commit
+    run_ruff: true
+  
+  # CI/CD DISABLED (no GitHub Actions charges)
+  ci_cd:
+    enabled: false
+  
+  # Zed integration
+  zed:
+    enabled: true
+    inline_diagnostics: true
+
+# =====================
+# Rule Config
+# =====================
+
+rule_config:
+  ruff-lint:
+    auto_fix: false
+  
+  no-web-fetching:
+    allowed_domains:
+      - "pypi.org"
+      - "npmjs.com"
+      - "github.com"
+      - "crates.io"
+
+# =====================
+# Local Development Workflow
+# =====================
+
+# Recommended commands for local development:
+#
+# 1. Quick validation (structure only):
+#    terminus-validator validate .
+#
+# 2. Validate specific task:
+#    cd arm7-triage && terminus-validator validate .
+#
+# 3. Lint all tasks:
+#    terminus-validator ruff check .
+#
+# 4. Test oracle (use your shell function):
+#    test-oracle
+#
+# 5. Before committing to GitHub:
+#    terminus-validator validate . --fail-on-warnings
+#    terminus-validator ruff check .
+
+# =====================
+# Notes
+# =====================
+
+# - No CI/CD configured (no GitHub Actions charges)
+# - Use validator for local validation only
+# - Harbor tests run via your shell functions
+# - Git pre-commit hook is optional (disabled by default)

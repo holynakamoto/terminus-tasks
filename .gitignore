@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Harbor
+jobs/
+.harbor/
+
+# Task artifacts
+*.zip
+
+# macOS
+.DS_Store
+
+# IDE
+.zed/
+.vscode/
+
+# Logs
+*.log
+
+# Don't ignore config
+!.terminus-validator.yaml
+!.gitignore
