@@ -1,0 +1,12 @@
+[package]
+name = "tls-example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+openssl = "0.10.64"
+reqwest = { version = "0.12.4", features = ["blocking", "rustls-tls-native-roots"] }
+
+[build-dependencies]
+bindgen = "0.69.4"
+
