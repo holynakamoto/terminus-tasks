@@ -1,0 +1,23 @@
+version = "1.0"
+
+[metadata]
+title = "NCCL Optimization: RoCEv2 (PFC vs ECN) vs InfiniBand"
+description = "Test PFC, ECN, and Hybrid congestion control for RoCEv2 to match InfiniBand performance. Mirrors xAI Colossus approach (200k GPUs)."
+author_name = "Nick Moore"
+author_email = "nick.moore@pm.me"
+category = "system-administration"
+difficulty = "hard"
+tags = ["gpu", "nccl", "rdma", "infiniband", "roce", "pfc", "ecn", "dcqcn", "distributed-training", "hpc", "networking", "hyperscale"]
+estimated_time_minutes = 20
+
+[verifier]
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 1800.0  # Building CUDA/NCCL takes time
+cpus = 2                     # Multi-GPU simulation (leave headroom for Docker on 4-CPU machines)
+memory_mb = 16384            # 16GB for CUDA/PyTorch workloads
+storage_mb = 20480           # 20GB for CUDA toolkit and dependencies
