@@ -1,4 +1,10 @@
-# Broken configuration - wrong target triple and missing linker config
-[target.armv7-unknown-linux-musleabihf]
+[target.armv7-unknown-linux-gnueabihf]
 linker = "arm-linux-gnueabihf-gcc"
+rustflags = [
+  "-C", "link-arg=-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3",
+  "-C", "link-arg=-no-pie"
+]
 
+[env]
+CC_armv7_unknown_linux_gnueabihf = "arm-linux-gnueabihf-gcc"
+CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER = "arm-linux-gnueabihf-gcc"

@@ -45,5 +45,15 @@ Use QEMU user-mode to run the ARM binary. The command will typically be:
 qemu-arm -L /usr/arm-linux-gnueabihf ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>
 ```
 
+If you encounter a memory reservation error like "Unable to reserve ... bytes of virtual address space", you may need to use the `-R` option to limit the guest address space reservation. The solution should try progressively smaller values (1GB, 512MB, 256MB, 128MB) until one works:
+```bash
+qemu-arm -L /usr/arm-linux-gnueabihf -R 0x40000000 ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>  # 1GB
+qemu-arm -L /usr/arm-linux-gnueabihf -R 0x20000000 ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>  # 512MB
+qemu-arm -L /usr/arm-linux-gnueabihf -R 0x10000000 ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>  # 256MB
+qemu-arm -L /usr/arm-linux-gnueabihf -R 0x8000000 ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>   # 128MB
+```
+
+The `-R` option limits the guest address space reservation, which helps in constrained environments (such as containers) where the default ~4GB reservation fails. Different environments may require different values.
+
 Note: The exact QEMU command may vary based on your system configuration, but you need to ensure the ARM binary runs correctly and produces the expected output.
 

@@ -139,7 +139,8 @@ def test_nca_transformation_requirement():
     """Verify NCA was used (not just raw KMeans on features)."""
     # Load data and outputs
     data = np.load("/app/data/dataset.npz", allow_pickle=False)
-    X_full = data["X_full"]
+    X_train = data["X_train"]
+    data["X_full"]
     y_train = data["y_train"]
 
     clusters_path = "/app/output/clusters.npy"
@@ -147,7 +148,7 @@ def test_nca_transformation_requirement():
 
     clusters = np.load(clusters_path)
     with open(metrics_path, "r", encoding="utf-8") as f:
-        metrics = json.load(f)
+        json.load(f)
 
     n_train = X_train.shape[0]
     n_classes = len(np.unique(y_train))
@@ -158,7 +159,7 @@ def test_nca_transformation_requirement():
 
     print(f"DEBUG: NCA-transformed quality: {ami_on_train:.4f}")
     assert ami_on_train > 0.65, (
-        f"Quality suggests NCA transformation was not used. "
+        "Quality suggests NCA transformation was not used. "
         "Apply NCA transformation before KMeans clustering as required."
     )
 
@@ -266,7 +267,7 @@ def test_anti_cheating_labeled_unlabeled_coherence():
     print(f"DEBUG: Unlabeled-to-labeled coherence: {agreement:.2%}")
     assert agreement >= 0.40, (
         f"Cluster coherence too low ({agreement:.2%}). Unlabeled samples should cluster with nearby labeled samples. "
-        f"This suggests trivial copying of labels rather than genuine clustering."
+        "This suggests trivial copying of labels rather than genuine clustering."
     )
 
 
@@ -352,7 +353,7 @@ def test_algorithm_requirements():
     metrics_path = "/app/output/metrics.json"
 
     with open(metrics_path, "r", encoding="utf-8") as f:
-        metrics = json.load(f)
+        json.load(f)
 
     n_train = X_train.shape[0]
 
@@ -466,8 +467,8 @@ def test_nca_algorithm_used():
     # Load data and outputs
     data = np.load("/app/data/dataset.npz", allow_pickle=False)
     X_train = data["X_train"]
-    X_full = data["X_full"]
-    y_train = data["y_train"]
+    data["X_full"]
+    data["y_train"]
 
     clusters_path = "/app/output/clusters.npy"
     clusters = np.load(clusters_path)
@@ -476,7 +477,6 @@ def test_nca_algorithm_used():
     # Check NCA characteristic: transformed space should improve local neighborhood
     # preservation compared to raw space. This is a distinctive property of NCA.
     from sklearn.neighbors import NearestNeighbors
-    from sklearn.metrics import adjusted_mutual_info_score
 
     # Compute neighborhood preservation in raw space
     nn_raw = NearestNeighbors(n_neighbors=5).fit(X_train)
@@ -561,7 +561,7 @@ def test_n_components_validation():
     with optimized parameter selection.
     """
     # Load data
-    data = np.load("/app/data/dpz", allow_pickle=False)
+    data = np.load("/app/data/dataset.npz", allow_pickle=False)
     X_train = data["X_train"]
     y_train = data["y_train"]
 
@@ -570,10 +570,10 @@ def test_n_components_validation():
 
     clusters = np.load(clusters_path)
     with open(metrics_path, "r") as f:
-        metrics = json.load(f)
+        json.load(f)
 
     n_train = X_train.shape[0]
-    n_classes = len(np.unique(y_train))
+    len(np.unique(y_train))
 
     # Verify the solution quality is high enough to suggest parameter validation
     # A properly validated n_components should give better results than defaults
@@ -645,10 +645,10 @@ def test_enhanced_anti_cheating():
     multiple invariant properties that NCA+KMeans should satisfy.
     """
     # Load data
-    data = np.load("/app/data/dpz", allow_pickle=False)
+    data = np.load("/app/data/dataset.npz", allow_pickle=False)
     X_train = data["X_train"]
     y_train = data["y_train"]
-    X_full = data["X_full"]
+    data["X_full"]
 
     clusters_path = "/app/output/clusters.npy"
     clusters = np.load(clusters_path)
@@ -706,128 +706,6 @@ def test_enhanced_anti_cheating():
     )
 
 
-def test_nca_algorithm_used():
-    """Verify that Neighborhood Components Analysis (NCA) approach is required.
-
-    This test enforces specific algorithm requirement by checking that
-    clustering approach shows characteristics consistent with NCA transformation.
-    We verify this by checking that feature transformation properties
-    are consistent with NCA neighborhood preservation.
-    """
-    # Load data and outputs
-    data = np.load("/app/data/dataset.npz", allow_pickle=False)
-    X_train = data["X_train"]
-    X_full = data["X_full"]
-    y_train = data["y_train"]
-
-    clusters_path = "/app/output/clusters.npy"
-    clusters = np.load(clusters_path)
-    n_train = X_train.shape[0]
-
-    # Check NCA characteristic: transformed space should improve local neighborhood
-    # preservation. We infer this by checking cluster coherence properties.
-    from sklearn.neighbors import NearestNeighbors
-
-    # Compute neighborhood preservation in training data
-    nn = NearestNeighbors(n_neighbors=5).fit(X_train)
-    distances, indices = nn.kneighbors(X_train)
-
-    clusters_train = clusters[:n_train]
-
-    # Calculate same-cluster rate for neighbors
-    neighbor_same_cluster = 0
-    total_neighbors = 0
-
-    for i in range(n_train):
-        for neighbor_idx in indices[i]:
-            if clusters_train[i] == clusters_train[neighbor_idx]:
-                neighbor_same_cluster += 1
-            total_neighbors += 1
-
-    neighbor_agreement = (
-        neighbor_same_cluster / total_neighbors if total_neighbors > 0 else 0
-    )
-
-    # NCA should preserve neighborhood structure
-    print(f"DEBUG: Neighbor agreement rate: {neighbor_agreement:.3f}")
-    assert neighbor_agreement >= 0.15, (
-        f"Neighbor agreement too low ({neighbor_agreement:.3f}). "
-        "This suggests NCA transformation was not properly applied."
-    )
-
-
-def test_kmeans_with_many_initializations():
-    """Verify that KMeans was used with sufficient initializations.
-
-    The instructions require using multiple KMeans initializations (n_init >= 20)
-    to avoid poor local optima. We check quality that would only emerge
-    from thorough initialization.
-    """
-    # Load data and outputs
-    data = np.load("/app/data/dataset.npz", allow_pickle=False)
-    X_train = data["X_train"]
-    y_train = data["y_train"]
-
-    clusters_path = "/app/output/clusters.npy"
-    clusters = np.load(clusters_path)
-    metrics_path = "/app/output/metrics.json"
-
-    with open(metrics_path, "r") as f:
-        metrics = json.load(f)
-
-    n_train = X_train.shape[0]
-
-    # The quality should be high enough that it could only be achieved with
-    # multiple KMeans initializations. Single runs typically get stuck in local optima.
-    ami = adjusted_mutual_info_score(y_train, clusters[:n_train])
-
-    # Check that AMI is high enough to suggest thorough initialization
-    print(f"DEBUG: AMI from clustering: {ami:.4f}")
-    assert ami > 0.65, (
-        f"AMI too low ({ami:.4f}). This suggests insufficient KMeans initializations. "
-        "Use n_init >= 20 to explore multiple starting points."
-    )
-
-    # Also verify that stored AMI matches our computation
-    assert abs(metrics["adjusted_mutual_info"] - round(ami, 4)) < 1e-4, (
-        "Stored AMI should match computed value from cluster assignments"
-    )
-
-
-def test_n_components_validation():
-    """Verify that n_components was selected through validation process.
-
-    NCA requires selecting n_components parameter through validation.
-    We check this by verifying that solution quality is consistent
-    with optimized parameter selection.
-    """
-    # Load data
-    data = np.load("/app/data/dataset.npz", allow_pickle=False)
-    X_train = data["X_train"]
-    y_train = data["y_train"]
-
-    clusters_path = "/app/output/clusters.npy"
-    clusters = np.load(clusters_path)
-    metrics_path = "/app/output/metrics.json"
-
-    with open(metrics_path, "r") as f:
-        metrics = json.load(f)
-
-    n_train = X_train.shape[0]
-    n_classes = len(np.unique(y_train))
-
-    # Verify that solution quality is high enough to suggest parameter validation
-    ami = adjusted_mutual_info_score(y_train, clusters[:n_train])
-
-    # Check that solution achieves reasonable quality
-    assert ami > 0.65, (
-        f"Quality too low ({ami:.4f}). This suggests n_components validation "
-        "was not performed properly. Use validation to select optimal n_components."
-    )
-
-    print(f"DEBUG: Achieved AMI with validated n_components: {ami:.4f}")
-
-
 def test_enhanced_silhouette_on_transformed():
     """Verify silhouette score was computed on NCA-transformed features, not raw.
 
@@ -869,105 +747,6 @@ def test_enhanced_silhouette_on_transformed():
     )
 
 
-def test_enhanced_anti_cheating():
-    """Enhanced anti-cheating measures beyond basic coherence check.
-
-    This test prevents more sophisticated cheating approaches by checking
-    multiple invariant properties that NCA+KMeans should satisfy.
-    """
-    # Load data
-    data = np.load("/app/data/dataset.npz", allow_pickle=False)
-    X_train = data["X_train"]
-    y_train = data["y_train"]
-    X_full = data["X_full"]
-
-    clusters_path = "/app/output/clusters.npy"
-    clusters = np.load(clusters_path)
-
-    n_train = X_train.shape[0]
-    n_classes = len(np.unique(y_train))
-
-    # Test 1: Ensure clusters aren't just copies of training labels
-    clusters_train = clusters[:n_train]
-
-    # If clusters exactly match training labels, it's cheating
-    direct_match_rate = np.mean(clusters_train == y_train)
-
-    print(f"DEBUG: Direct label match rate: {direct_match_rate:.3f}")
-    assert direct_match_rate < 0.95, (
-        f"Direct label match rate too high ({direct_match_rate:.3f}). "
-        "This suggests copying training labels rather than genuine clustering."
-    )
-
-    # Test 2: Verify cluster size distribution is reasonable
-    unique_clusters, cluster_counts = np.unique(clusters, return_counts=True)
-    total_samples = len(clusters)
-    size_ratios = cluster_counts / total_samples
-
-    # Check that no cluster is extremely small
-    min_cluster_ratio = np.min(size_ratios)
-    max_cluster_ratio = np.max(size_ratios)
-
-    print(
-        f"DEBUG: Cluster size ratios - min: {min_cluster_ratio:.3f}, max: {max_cluster_ratio:.3f}"
-    )
-
-    # Allow some imbalance but prevent degenerate cases
-    assert min_cluster_ratio > 0.01, (
-        f"Cluster too small ({min_cluster_ratio:.3f} of samples). "
-        "This may indicate improper clustering approach."
-    )
-
-    # Test 3: Verify cluster assignments are not trivial patterns
-    clusters_diff = np.diff(clusters)
-    pattern_complexity = len(np.unique(clusters_diff))
-
-    print(f"DEBUG: Assignment pattern complexity: {pattern_complexity}")
-    assert pattern_complexity > n_classes * 0.5, (
-        f"Assignment pattern too simple (complexity: {pattern_complexity}). "
-        "This suggests a trivial assignment strategy rather than genuine clustering."
-    )
-
-
-def test_algorithm_requirements():
-    """Enforce specific algorithm requirements for this task."""
-    # Load data and outputs
-    data = np.load("/app/data/dataset.npz", allow_pickle=False)
-    X_train = data["X_train"]
-    y_train = data["y_train"]
-
-    clusters_path = "/app/output/clusters.npy"
-    clusters = np.load(clusters_path)
-    metrics_path = "/app/output/metrics.json"
-
-    with open(metrics_path, "r", encoding="utf-8") as f:
-        metrics = json.load(f)
-
-    n_train = X_train.shape[0]
-
-    # REQUIREMENT: Quality must be high enough to suggest proper NCA+KMeans approach
-    ami = adjusted_mutual_info_score(y_train, clusters[:n_train])
-    print(f"DEBUG: Algorithm quality check - AMI: {ami:.4f}")
-
-    # This threshold enforces that multiple KMeans initializations were used (n_init >= 20)
-    # and that NCA transformation was properly applied
-    assert ami > 0.65, (
-        f"Quality too low ({ami:.4f}). This suggests either: "
-        "1) KMeans was not run with sufficient initializations (n_init >= 20), or "
-        "2) NCA transformation was not properly applied. "
-        "Both are required by the task instructions."
-    )
-
-    # Additional check: Prevent trivial solutions
-    clusters_train = clusters[:n_train]
-    direct_match_rate = np.mean(clusters_train == y_train)
-    print(f"DEBUG: Anti-cheating check - direct match rate: {direct_match_rate:.3f}")
-    assert direct_match_rate < 0.95, (
-        f"Direct label match rate too high ({direct_match_rate:.3f}). "
-        "This suggests copying training labels rather than genuine NCA+KMeans clustering."
-    )
-
-
 def test_outputs():
     """Verify outputs meet all required specifications."""
     # Verify clusters file
@@ -975,7 +754,7 @@ def test_outputs():
     assert os.path.exists(clusters_path), "clusters.npy must exist"
 
     clusters = np.load(clusters_path)
-    data = np.load("/app/data/dpz", allow_pickle=False)
+    data = np.load("/app/data/dataset.npz", allow_pickle=False)
     X_full = data["X_full"]
     n_clusters = int(np.asarray(data["n_clusters"]).item())
 

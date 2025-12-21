@@ -1,12 +1,20 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-# Ensure reward file is created even on early exit
+# Ensure reward file exists even if script exits early
 trap 'if [ ! -f /logs/verifier/reward.txt ]; then echo 0 > /logs/verifier/reward.txt; fi' EXIT
 
-cd /app
+echo "=== [1/6] Load Harbor verifier environment ==="
 
-# Test 1: Verify environment variables are set
+# Source environment variables exported by solve.sh
+if [ -f /logs/verifier/env.sh ]; then
+    source /logs/verifier/env.sh
+    echo "Loaded /logs/verifier/env.sh"
+else
+    echo "Warning: /logs/verifier/env.sh not found"
+fi
+
+# Verify environment variables
 echo "Checking environment variables..."
 if [ -z "${CC_armv7_unknown_linux_gnueabihf:-}" ]; then
     echo "✗ CC_armv7_unknown_linux_gnueabihf is not set"
@@ -20,131 +28,130 @@ if [ -z "${CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER:-}" ]; then
     exit 1
 fi
 
-echo "✓ Environment variables are set correctly"
+echo "✓ Environment variables are set"
 echo "  CC_armv7_unknown_linux_gnueabihf=$CC_armv7_unknown_linux_gnueabihf"
 echo "  CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=$CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER"
 
-# Test 2: Verify .cargo/config.toml exists and contains linker configuration
-echo "Checking .cargo/config.toml..."
-if [ ! -f ".cargo/config.toml" ]; then
+echo "=== [2/6] Verify Cargo config ==="
+if [ ! -f /app/.cargo/config.toml ]; then
     echo "✗ .cargo/config.toml not found"
     echo 0 > /logs/verifier/reward.txt
     exit 1
 fi
 
-# Check if config.toml contains the armv7 target configuration
-if ! grep -q "armv7-unknown-linux-gnueabihf" .cargo/config.toml; then
-    echo "✗ .cargo/config.toml does not contain armv7-unknown-linux-gnueabihf configuration"
+if ! grep -q "armv7-unknown-linux-gnueabihf" /app/.cargo/config.toml; then
+    echo "✗ .cargo/config.toml missing armv7 target"
     echo 0 > /logs/verifier/reward.txt
     exit 1
 fi
 
-if ! grep -q "linker" .cargo/config.toml; then
-    echo "✗ .cargo/config.toml does not specify a linker"
+if ! grep -q "linker" /app/.cargo/config.toml; then
+    echo "✗ .cargo/config.toml missing linker configuration"
     echo 0 > /logs/verifier/reward.txt
     exit 1
 fi
 
 echo "✓ .cargo/config.toml is properly configured"
 
-# Test 3: Build the ARM binary
-echo "Building ARM binary..."
-if ! cargo build --target armv7-unknown-linux-gnueabihf --release; then
+echo "=== [3/6] Build ARMv7 static binary ==="
+cd /app
+
+cargo clean
+if ! cargo build --release --target armv7-unknown-linux-gnueabihf; then
     echo "✗ Build failed"
     echo 0 > /logs/verifier/reward.txt
     exit 1
 fi
 
-echo "✓ Build succeeded"
-
-# Verify the binary exists
-BINARY_PATH="./target/armv7-unknown-linux-gnueabihf/release/sample-cli"
+BINARY_PATH="/app/target/armv7-unknown-linux-gnueabihf/release/sample-cli"
 if [ ! -f "$BINARY_PATH" ]; then
     echo "✗ Binary not found at $BINARY_PATH"
     echo 0 > /logs/verifier/reward.txt
     exit 1
 fi
 
-# Test 4: Run the binary with QEMU
-# Use a deterministic test input (5) for verification
+echo "✓ Binary built successfully"
+
+echo "=== [4/6] Run binary under QEMU (test 1) ==="
 TEST_INPUT=5
 EXPECTED_OUTPUT="Result: 10"
 
-echo "Running binary with QEMU (input: $TEST_INPUT)..."
-
-# Disable exit on error for better debugging
 set +e
-
-# Use QEMU with -L option to specify ARM library path
-# Let QEMU handle memory management automatically
 OUTPUT=$(qemu-arm -L /usr/arm-linux-gnueabihf "$BINARY_PATH" "$TEST_INPUT" 2>&1)
 EXIT_CODE=$?
 
-echo "Exit code: $EXIT_CODE"
-echo "Raw output: '$OUTPUT'"
+# Retry with smaller -R if memory reservation fails
+if [ $EXIT_CODE -ne 0 ] && echo "$OUTPUT" | grep -q "Unable to reserve.*bytes"; then
+    for R_VALUE in "0x40000000" "0x20000000" "0x10000000" "0x8000000"; do
+        echo "Memory reservation failed, retrying with -R $R_VALUE..."
+        OUTPUT=$(qemu-arm -L /usr/arm-linux-gnueabihf -R "$R_VALUE" "$BINARY_PATH" "$TEST_INPUT" 2>&1)
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 0 ] || ! echo "$OUTPUT" | grep -q "Unable to reserve.*bytes"; then
+            break
+        fi
+    done
+fi
 
 if [ $EXIT_CODE -ne 0 ]; then
-    echo "✗ Binary execution failed with exit code $EXIT_CODE"
+    echo "✗ Binary execution failed (test 1)"
+    echo "Output: $OUTPUT"
     echo 0 > /logs/verifier/reward.txt
     set -e
     exit 1
 fi
 
-# Trim whitespace when comparing
 OUTPUT_CLEAN=$(echo "$OUTPUT" | tr -d '\n\r' | xargs)
 EXPECTED_CLEAN=$(echo "$EXPECTED_OUTPUT" | tr -d '\n\r' | xargs)
-
-echo "Cleaned output: '$OUTPUT_CLEAN'"
-echo "Expected: '$EXPECTED_CLEAN'"
-
 if [ "$OUTPUT_CLEAN" != "$EXPECTED_CLEAN" ]; then
-    echo "✗ Output mismatch"
+    echo "✗ Output mismatch (test 1)"
+    echo "Expected: $EXPECTED_CLEAN"
+    echo "Got:      $OUTPUT_CLEAN"
     echo 0 > /logs/verifier/reward.txt
     set -e
     exit 1
 fi
 
-set -e
-echo "✓ Binary executed successfully"
-echo "✓ Output matches expected"
+echo "✓ Test 1 passed"
 
-# Test 5: Try a different input to ensure it's not hardcoded
+echo "=== [5/6] Run binary under QEMU (test 2) ==="
 TEST_INPUT_2=7
 EXPECTED_OUTPUT_2="Result: 14"
 
-echo "Running binary with QEMU (input: $TEST_INPUT_2)..."
-
-set +e
-# Use QEMU with -L option to specify ARM library path
-# Let QEMU handle memory management automatically
 OUTPUT_2=$(qemu-arm -L /usr/arm-linux-gnueabihf "$BINARY_PATH" "$TEST_INPUT_2" 2>&1)
 EXIT_CODE_2=$?
 
-echo "Exit code (test 2): $EXIT_CODE_2"
-echo "Raw output (test 2): '$OUTPUT_2'"
+if [ $EXIT_CODE_2 -ne 0 ] && echo "$OUTPUT_2" | grep -q "Unable to reserve.*bytes"; then
+    for R_VALUE in "0x40000000" "0x20000000" "0x10000000" "0x8000000"; do
+        echo "Memory reservation failed, retrying with -R $R_VALUE..."
+        OUTPUT_2=$(qemu-arm -L /usr/arm-linux-gnueabihf -R "$R_VALUE" "$BINARY_PATH" "$TEST_INPUT_2" 2>&1)
+        EXIT_CODE_2=$?
+        if [ $EXIT_CODE_2 -eq 0 ] || ! echo "$OUTPUT_2" | grep -q "Unable to reserve.*bytes"; then
+            break
+        fi
+    done
+fi
 
 if [ $EXIT_CODE_2 -ne 0 ]; then
-    echo "✗ Binary execution failed with exit code $EXIT_CODE_2"
+    echo "✗ Binary execution failed (test 2)"
+    echo "Output: $OUTPUT_2"
     echo 0 > /logs/verifier/reward.txt
     set -e
     exit 1
 fi
 
-# Trim whitespace when comparing
 OUTPUT_2_CLEAN=$(echo "$OUTPUT_2" | tr -d '\n\r' | xargs)
 EXPECTED_2_CLEAN=$(echo "$EXPECTED_OUTPUT_2" | tr -d '\n\r' | xargs)
-
-echo "Cleaned output (test 2): '$OUTPUT_2_CLEAN'"
-echo "Expected (test 2): '$EXPECTED_2_CLEAN'"
-
 if [ "$OUTPUT_2_CLEAN" != "$EXPECTED_2_CLEAN" ]; then
-    echo "✗ Output mismatch for second test"
+    echo "✗ Output mismatch (test 2)"
+    echo "Expected: $EXPECTED_2_CLEAN"
+    echo "Got:      $OUTPUT_2_CLEAN"
     echo 0 > /logs/verifier/reward.txt
     set -e
     exit 1
 fi
 
-set -e
+echo "✓ Test 2 passed"
 
-echo "✓ All tests passed"
+echo "=== [6/6] All tests passed ==="
 echo 1 > /logs/verifier/reward.txt
+set -e
