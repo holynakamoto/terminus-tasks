@@ -2,7 +2,7 @@
 
 ## Task Description
 
-Given a partially labeled dataset, develop a clustering approach that uses the available label information to discover meaningful cluster structure. Learn a feature transformation from the labeled examples that captures class structure, then apply clustering in the transformed space.
+Given a partially labeled dataset, develop a semi-supervised clustering approach that effectively leverages both labeled and unlabeled data to discover meaningful cluster structure. Learn a feature transformation from the labeled examples that captures class structure, iteratively refine predictions on unlabeled data, then apply clustering in the transformed space. The challenge lies in handling noisy labels, moderate class separation, and a balanced ratio of labeled-to-unlabeled samples (50/50).
 
 ## Input
 
@@ -33,24 +33,34 @@ Two files in `/app/output/`:
      - Use validation evidence (not heuristics like `n_components = n_classes`) to justify your choice
    - Ensure reproducibility by using a fixed random seed
 
-2. **Clustering**
+2. **Semi-Supervised Learning (Required for achieving AMI > 0.72)**
+   - The dataset contains equal amounts of labeled and unlabeled data (250 labeled, 250 unlabeled)
+   - **You must leverage unlabeled data to improve performance beyond basic NCA+KMeans**
+   - Recommended approaches (choose one or combine):
+     - **Self-training**: Use initial NCA transformation to predict pseudo-labels for unlabeled data, then retrain NCA with high-confidence predictions
+     - **Iterative refinement**: Alternate between clustering and retraining NCA with pseudo-labeled data
+     - **Confidence-based filtering**: Only incorporate unlabeled samples with high prediction confidence
+   - The increased unlabeled data ratio (50%) and label noise (5%) make semi-supervised learning essential for achieving the quality threshold
+
+3. **Clustering**
    - Apply K-means clustering from scikit-learn to the NCA-transformed features (not raw features)
    - Use the target number of clusters provided in the dataset
    - **You must use multiple initializations** (`n_init` ≥ 20) and select the best run based on inertia or silhouette score
    - Use stable initialization parameters (fixed `random_state`) to ensure consistent results
 
-3. **Quality Requirements**
+4. **Quality Requirements**
    - The clustering must achieve strong alignment with ground-truth class structure
-   - **Adjusted Mutual Information (AMI) between true labels and clusters must be > 0.68**
-   - This requires optimal or near-optimal selection of NCA `n_components` and proper NCA/KMeans tuning
-   - Note: AMI > 0.68 indicates strong recovery of the true cluster structure, requiring careful parameter selection, validation, and multiple initialization trials
+   - **Adjusted Mutual Information (AMI) between true labels and clusters must be > 0.72**
+   - This requires optimal or near-optimal selection of NCA `n_components`, proper NCA/KMeans tuning, AND effective semi-supervised learning
+   - Note: AMI > 0.72 on this challenging dataset (lower class separation, label noise, 50% unlabeled data) indicates strong recovery of the true cluster structure
+   - Achieving this threshold requires: careful parameter selection, validation, multiple initialization trials, and leveraging unlabeled data to improve the transformation
 
-4. **Clustering Requirements**
+5. **Clustering Requirements**
    - Verify that all samples receive valid cluster IDs in the range [0, n_clusters-1)
    - The clustering should produce exactly n_clusters distinct clusters
    - **Cluster coherence**: Unlabeled samples should cluster with nearby labeled samples. At least 40% of unlabeled samples must share the same cluster ID as their nearest labeled neighbor in the raw feature space. This ensures the clustering approach genuinely uses the feature space structure rather than arbitrary assignments.
 
-5. **Metric Computation**
+6. **Metric Computation**
    - Adjusted Mutual Information: Compare training labels (y_train) with cluster assignments for the corresponding samples (first len(X_train) elements). Valid range: [-1, 1]
    - **Silhouette Score: Must be computed on the NCA-transformed (low-dimensional) features, not the raw input features**. Valid range: [-1, 1]
    - Round both metrics to exactly 4 decimal places

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Ensure logs directory exists (for both local and CodeBuild environments)
+mkdir -p /logs/verifier
+
 # Ensure reward file is created even on early exit
 trap 'if [ ! -f /logs/verifier/reward.txt ]; then echo 0 > /logs/verifier/reward.txt; fi' EXIT
 

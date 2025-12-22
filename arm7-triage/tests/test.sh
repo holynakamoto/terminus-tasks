@@ -40,7 +40,7 @@ if [ ! -f /app/.cargo/config.toml ]; then
 fi
 
 if ! grep -q "armv7-unknown-linux-gnueabihf" /app/.cargo/config.toml; then
-    echo "✗ .cargo/config.toml missing armv7 target"
+    echo "✗ .cargo/config.toml missing armv7 glibc target"
     echo 0 > /logs/verifier/reward.txt
     exit 1
 fi
@@ -53,7 +53,7 @@ fi
 
 echo "✓ .cargo/config.toml is properly configured"
 
-echo "=== [3/6] Build ARMv7 static binary ==="
+echo "=== [3/6] Build ARMv7 glibc dynamic binary ==="
 cd /app
 
 cargo clean
@@ -77,20 +77,10 @@ TEST_INPUT=5
 EXPECTED_OUTPUT="Result: 10"
 
 set +e
-OUTPUT=$(qemu-arm -L /usr/arm-linux-gnueabihf "$BINARY_PATH" "$TEST_INPUT" 2>&1)
+# glibc produces dynamically linked binaries - requires sysroot
+QEMU_LD_PREFIX=/usr/arm-linux-gnueabihf
+OUTPUT=$(qemu-arm -L "$QEMU_LD_PREFIX" "$BINARY_PATH" "$TEST_INPUT" 2>&1)
 EXIT_CODE=$?
-
-# Retry with smaller -R if memory reservation fails
-if [ $EXIT_CODE -ne 0 ] && echo "$OUTPUT" | grep -q "Unable to reserve.*bytes"; then
-    for R_VALUE in "0x40000000" "0x20000000" "0x10000000" "0x8000000"; do
-        echo "Memory reservation failed, retrying with -R $R_VALUE..."
-        OUTPUT=$(qemu-arm -L /usr/arm-linux-gnueabihf -R "$R_VALUE" "$BINARY_PATH" "$TEST_INPUT" 2>&1)
-        EXIT_CODE=$?
-        if [ $EXIT_CODE -eq 0 ] || ! echo "$OUTPUT" | grep -q "Unable to reserve.*bytes"; then
-            break
-        fi
-    done
-fi
 
 if [ $EXIT_CODE -ne 0 ]; then
     echo "✗ Binary execution failed (test 1)"
@@ -102,6 +92,11 @@ fi
 
 OUTPUT_CLEAN=$(echo "$OUTPUT" | tr -d '\n\r' | xargs)
 EXPECTED_CLEAN=$(echo "$EXPECTED_OUTPUT" | tr -d '\n\r' | xargs)
+
+# Debug: show what we're comparing
+echo "Filtered output: '$OUTPUT_CLEAN'"
+echo "Expected output: '$EXPECTED_CLEAN'"
+
 if [ "$OUTPUT_CLEAN" != "$EXPECTED_CLEAN" ]; then
     echo "✗ Output mismatch (test 1)"
     echo "Expected: $EXPECTED_CLEAN"
@@ -117,19 +112,9 @@ echo "=== [5/6] Run binary under QEMU (test 2) ==="
 TEST_INPUT_2=7
 EXPECTED_OUTPUT_2="Result: 14"
 
-OUTPUT_2=$(qemu-arm -L /usr/arm-linux-gnueabihf "$BINARY_PATH" "$TEST_INPUT_2" 2>&1)
+# glibc produces dynamically linked binaries - requires sysroot
+OUTPUT_2=$(qemu-arm -L "$QEMU_LD_PREFIX" "$BINARY_PATH" "$TEST_INPUT_2" 2>&1)
 EXIT_CODE_2=$?
-
-if [ $EXIT_CODE_2 -ne 0 ] && echo "$OUTPUT_2" | grep -q "Unable to reserve.*bytes"; then
-    for R_VALUE in "0x40000000" "0x20000000" "0x10000000" "0x8000000"; do
-        echo "Memory reservation failed, retrying with -R $R_VALUE..."
-        OUTPUT_2=$(qemu-arm -L /usr/arm-linux-gnueabihf -R "$R_VALUE" "$BINARY_PATH" "$TEST_INPUT_2" 2>&1)
-        EXIT_CODE_2=$?
-        if [ $EXIT_CODE_2 -eq 0 ] || ! echo "$OUTPUT_2" | grep -q "Unable to reserve.*bytes"; then
-            break
-        fi
-    done
-fi
 
 if [ $EXIT_CODE_2 -ne 0 ]; then
     echo "✗ Binary execution failed (test 2)"
@@ -141,6 +126,11 @@ fi
 
 OUTPUT_2_CLEAN=$(echo "$OUTPUT_2" | tr -d '\n\r' | xargs)
 EXPECTED_2_CLEAN=$(echo "$EXPECTED_OUTPUT_2" | tr -d '\n\r' | xargs)
+
+# Debug: show what we're comparing
+echo "Filtered output: '$OUTPUT_2_CLEAN'"
+echo "Expected output: '$EXPECTED_2_CLEAN'"
+
 if [ "$OUTPUT_2_CLEAN" != "$EXPECTED_2_CLEAN" ]; then
     echo "✗ Output mismatch (test 2)"
     echo "Expected: $EXPECTED_2_CLEAN"

@@ -12,33 +12,39 @@ RUN pip3 install --break-system-packages --no-cache-dir \
     "scikit-learn==1.3.2"
 
 # Generate test dataset so it's available when Oracle agent runs
-# Dataset: 400 samples (300 labeled + 100 unlabeled), 8 classes, 25 features
+# Dataset: 500 samples (250 labeled + 250 unlabeled), 8 classes, 40 features
+# This MUST match the dataset generated in test.sh
 RUN python3 <<'EOF'
 import numpy as np
 from sklearn.datasets import make_classification
 import os
 
-# Generate challenging dataset with good separation (calibrated for AMI > 0.65-0.80)
-n_samples_train = 300  # Training samples with labels
-n_samples_unlabeled = 100  # Unlabeled samples
-n_samples = n_samples_train + n_samples_unlabeled  # 400 total
+# Generate challenging dataset with moderate separation (calibrated for AMI > 0.72-0.78)
+# Oracle should achieve ~0.73-0.76, threshold set to 0.72 for Medium difficulty
+# Increased complexity: more features, more noise, lower separation, more unlabeled data
+
+# Make sure these values match what tests expect
+n_samples_train = 250  # Training samples with labels (reduced from 300)
+n_samples_unlabeled = 250  # Unlabeled samples (increased from 100 to 250)
+n_samples = n_samples_train + n_samples_unlabeled  # 500 total
 
 X, y = make_classification(
     n_samples=n_samples,
-    n_features=25,
+    n_features=40,  # Increased from 25 to 40
     n_classes=8,
-    n_informative=18,
-    n_redundant=4,
+    n_informative=20,  # Increased informative features
+    n_redundant=10,  # Increased redundant features
+    n_repeated=5,  # Add repeated (duplicated) features
     n_clusters_per_class=1,
-    class_sep=1.8,  # Higher separation - makes clustering more achievable with good tuning
-    flip_y=0.00,  # No label noise - cleaner separation
+    class_sep=1.15,  # Lower separation - makes clustering harder (was 1.8)
+    flip_y=0.05,  # Add 5% label noise for realism (was 0.00)
     random_state=42
 )
 
-# Split: first 300 samples are labeled training data, all 400 are in X_full
+# Split: first 250 samples are labeled training data, all 500 are in X_full
 X_train = X[:n_samples_train]
 y_train = y[:n_samples_train]
-X_full = X  # Full dataset (300 labeled + 100 unlabeled)
+X_full = X  # Full dataset (250 labeled + 250 unlabeled)
 n_clusters = 8
 
 os.makedirs('/app/data', exist_ok=True)

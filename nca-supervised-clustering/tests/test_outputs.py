@@ -176,7 +176,7 @@ def test_nca_transformation_requirement():
 
 
 def test_clustering_approach_quality():
-    """Verify cluster assignments use exactly n_clusters distinct integer IDs and AMI > 0.68."""
+    """Verify cluster assignments use exactly n_clusters distinct integer IDs and AMI > 0.72."""
     # Load input data
     data = np.load("/app/data/dataset.npz", allow_pickle=False)
     X_train = data["X_train"]
@@ -199,18 +199,18 @@ def test_clustering_approach_quality():
         "Cluster IDs must be in valid range"
     )
 
-    # Verify AMI meets quality requirement (> 0.68)
-    # Calibrated for Hard difficulty: oracle achieves ~0.69-0.72, threshold set to 0.68
-    # This requires careful n_components selection and proper KMeans initialization
+    # Verify AMI meets quality requirement (> 0.72)
+    # Calibrated for Medium difficulty: oracle achieves ~0.73-0.76, threshold set to 0.72
+    # This requires careful n_components selection, proper KMeans initialization, and effective use of unlabeled data
     n_train = X_train.shape[0]
     ami_on_train = adjusted_mutual_info_score(y_train, clusters[:n_train])
     print(f"DEBUG: Actual AMI computed from clusters: {ami_on_train:.6f}")
     print(f"DEBUG: Stored AMI in metrics: {metrics['adjusted_mutual_info']:.6f}")
-    assert ami_on_train > 0.68, (
-        f"AMI must be > 0.68 (requires careful parameter tuning), got {ami_on_train:.6f}"
+    assert ami_on_train > 0.72, (
+        f"AMI must be > 0.72 (requires careful parameter tuning and semi-supervised approach), got {ami_on_train:.6f}"
     )
-    assert metrics["adjusted_mutual_info"] > 0.68, (
-        f"Stored AMI must be > 0.68, got {metrics['adjusted_mutual_info']:.6f}"
+    assert metrics["adjusted_mutual_info"] > 0.72, (
+        f"Stored AMI must be > 0.72, got {metrics['adjusted_mutual_info']:.6f}"
     )
 
     # Verify metrics match computed values from outputs

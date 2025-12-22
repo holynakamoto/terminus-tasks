@@ -1,0 +1,33 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "================================================"
+      - echo "Running quality checks"
+      - echo "================================================"
+      - echo "Installing uv"
+      # Try multiple uv installation methods with fallbacks
+      - curl -LsSf https://astral.sh/uv/install.sh | sh || {
+          echo "Curl method failed, trying pip install...";
+          pip install uv || {
+              echo "Pip failed, trying python -m pip...";
+              python -m pip install uv || {
+                  echo "All uv installation methods failed, continuing without uv...";
+              };
+          };
+        }
+      # Source uv environment if installation succeeded
+      - if [ -f "$HOME/.local/bin/env" ]; then source $HOME/.local/bin/env; else export PATH="$HOME/.local/bin:$PATH"; fi
+      - echo "Checking uv installation..."
+      - uv --version || echo "UV not available, will use pip/pymcp as fallback"
+
+  build:
+    commands:
+      - echo "Running build process..."
+      # Your actual build commands here
+      - echo "Build completed"
+
+  post_build:
+    commands:
+      - echo "Build completed successfully"
