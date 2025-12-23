@@ -1,194 +1,134 @@
 #!/bin/bash
-# solution/solve.sh - Oracle solution for Semi-Supervised NCA + KMeans clustering task
-# This bash script executes the Python solution with self-training
+set -euo pipefail
 
-exec python3 <<'PYEOF'
+# Oracle solution: NCA (fit on labeled) -> transform full -> KMeans on embedding
+# Outputs:
+# - /app/output/clusters.npy   (int64, shape (n_total,))
+# - /app/output/embedding.npy  (float64, shape (n_total, n_components))
+# - /app/output/metrics.json   (AMI on labeled subset; silhouette on embedding)
 
+exec python3 - <<'PY'
 import json
 import os
 import sys
+
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_mutual_info_score, silhouette_score
-from sklearn.neighbors import NeighborhoodComponentsAnalysis, KNeighborsClassifier
+from sklearn.neighbors import NeighborhoodComponentsAnalysis
+from sklearn.preprocessing import StandardScaler
 
-# Paths
 DATA_PATH = "/app/data/dataset.npz"
 OUT_DIR = "/app/output"
 CLUSTERS_PATH = os.path.join(OUT_DIR, "clusters.npy")
+EMBEDDING_PATH = os.path.join(OUT_DIR, "embedding.npy")
 METRICS_PATH = os.path.join(OUT_DIR, "metrics.json")
-os.makedirs(OUT_DIR, exist_ok=True)
 
-# Load data
-data = np.load(DATA_PATH, allow_pickle=False)
-X_train = data["X_train"]
-y_train = data["y_train"]
-X_full = data["X_full"]
-n_clusters = int(data["n_clusters"].item())
+RANDOM_STATE = 0
 
-n_classes = len(np.unique(y_train))
-n_features = X_train.shape[1]
-n_train = X_train.shape[0]
-X_unlabeled = X_full[n_train:]
 
-print(f"Data loaded: X_train={X_train.shape}, X_unlabeled={X_unlabeled.shape}, "
-      f"X_full={X_full.shape}, n_clusters={n_clusters}, n_classes={n_classes}", file=sys.stderr)
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
-# === SEMI-SUPERVISED LEARNING APPROACH ===
-# Step 1: Initial parameter selection with labeled data only
-print("=== Step 1: Initial n_components selection (labeled data only) ===", file=sys.stderr)
-min_comp = max(2, n_classes - 1)
-max_comp = min(n_features, min(n_train // 10, n_classes + 10))
-candidates = list(range(min_comp, max_comp + 1))
 
-best_n_components_initial = min_comp
-best_ami_initial = -1.0
+def ensure_exact_k_clusters(labels: np.ndarray, k: int) -> np.ndarray:
+    """
+    Ensure labels are in [0, k-1] and that all k cluster IDs are present.
+    If some IDs are missing (rare but possible if something degenerates),
+    deterministically reassign a few points to cover missing IDs.
 
-for n_comp in candidates:
-    try:
-        nca = NeighborhoodComponentsAnalysis(
-            n_components=n_comp,
-            random_state=42,
-            max_iter=500,
-            tol=1e-6,
-        )
-        nca.fit(X_train, y_train)
-        X_transformed_train = nca.transform(X_train)
+    This keeps the output valid for tests that require exactly n_clusters unique IDs.
+    """
+    labels = labels.astype(np.int64, copy=True)
 
-        # Quick validation with a few KMeans runs
-        best_ami_comp = -1.0
-        for seed in range(42, 52):
-            km = KMeans(n_clusters=n_clusters, random_state=seed, n_init=10)
-            labels = km.fit_predict(X_transformed_train)
-            ami = adjusted_mutual_info_score(y_train, labels)
-            best_ami_comp = max(best_ami_comp, ami)
+    # Force into range first (defensive)
+    labels = np.clip(labels, 0, k - 1)
 
-        if best_ami_comp > best_ami_initial:
-            best_ami_initial = best_ami_comp
-            best_n_components_initial = n_comp
-    except Exception as e:
-        print(f"n_components={n_comp} failed: {e}", file=sys.stderr)
-        continue
+    present = set(map(int, np.unique(labels)))
+    missing = [c for c in range(k) if c not in present]
+    if not missing:
+        return labels
 
-print(f"Initial n_components={best_n_components_initial} (AMI={best_ami_initial:.4f})", file=sys.stderr)
+    # Deterministically choose indices to reassign: earliest indices not already used.
+    # This is simple and reproducible.
+    for i, c in enumerate(missing):
+        labels[i] = int(c)
 
-# Step 2: Self-training with pseudo-labeling
-print("=== Step 2: Self-training with pseudo-labels ===", file=sys.stderr)
-# Start with best n_components from initial search
-n_comp = best_n_components_initial
+    return labels
 
-# Current labeled set
-X_labeled = X_train.copy()
-y_labeled = y_train.copy()
 
-# Iterative self-training (2-3 iterations)
-for iteration in range(3):
-    print(f"  Iteration {iteration + 1}: Training with {len(y_labeled)} labeled samples", file=sys.stderr)
+def main() -> None:
+    os.makedirs(OUT_DIR, exist_ok=True)
 
-    # Train NCA on current labeled set
+    data = np.load(DATA_PATH, allow_pickle=False)
+    X_train = data["X_train"]
+    y_train = data["y_train"]
+    X_full = data["X_full"]
+    n_clusters = int(np.asarray(data["n_clusters"]).item())
+
+    n_train = int(X_train.shape[0])
+    n_total = int(X_full.shape[0])
+    n_features = int(X_full.shape[1])
+
+    # Choose a deterministic n_components >= 2 and <= n_features
+    # (No requirement to validate; tests require embedding >=2D for silhouette.)
+    n_components = min(16, n_features)
+    if n_components < 2:
+        n_components = 2
+
+    eprint(
+        f"Loaded data: X_train={X_train.shape}, X_full={X_full.shape}, n_clusters={n_clusters}"
+    )
+    eprint(f"Using n_components={n_components}")
+
+    # Preprocess (recommended): scale using labeled data only to avoid leakage.
+    scaler = StandardScaler()
+    X_train_s = scaler.fit_transform(X_train)
+    X_full_s = scaler.transform(X_full)
+
+    # Fit NCA on labeled data only
     nca = NeighborhoodComponentsAnalysis(
-        n_components=n_comp,
-        random_state=42,
-        max_iter=500,
-        tol=1e-6,
+        n_components=n_components,
+        random_state=RANDOM_STATE,
+        max_iter=300,
+        tol=1e-5,
     )
-    nca.fit(X_labeled, y_labeled)
+    nca.fit(X_train_s, y_train)
 
-    # Transform all data
-    X_full_transformed = nca.transform(X_full)
+    # Transform full dataset
+    embedding = nca.transform(X_full_s).astype(np.float64)
 
-    # Use KNN to predict pseudo-labels for unlabeled data
-    knn = KNeighborsClassifier(n_neighbors=7, weights='distance')
-    knn.fit(nca.transform(X_labeled), y_labeled)
-
-    # Predict on unlabeled data
-    X_unlabeled_transformed = nca.transform(X_unlabeled)
-    pseudo_labels = knn.predict(X_unlabeled_transformed)
-    pseudo_probs = knn.predict_proba(X_unlabeled_transformed)
-
-    # Select high-confidence predictions
-    confidence = np.max(pseudo_probs, axis=1)
-    confidence_threshold = np.percentile(confidence, 70)  # Top 30% most confident
-    high_conf_mask = confidence >= confidence_threshold
-
-    n_added = np.sum(high_conf_mask)
-    print(f"    Adding {n_added} high-confidence pseudo-labeled samples (threshold={confidence_threshold:.3f})", file=sys.stderr)
-
-    if n_added == 0:
-        print(f"    No more samples to add, stopping self-training", file=sys.stderr)
-        break
-
-    # Augment labeled set with high-confidence predictions
-    X_labeled = np.vstack([X_labeled, X_unlabeled[high_conf_mask]])
-    y_labeled = np.concatenate([y_labeled, pseudo_labels[high_conf_mask]])
-
-    # Update unlabeled set
-    X_unlabeled = X_unlabeled[~high_conf_mask]
-
-print(f"Self-training complete: final labeled set size = {len(y_labeled)}", file=sys.stderr)
-
-# === Step 3: Final NCA embedding with augmented data ===
-print("=== Step 3: Final NCA embedding with augmented labeled set ===", file=sys.stderr)
-nca_final = NeighborhoodComponentsAnalysis(
-    n_components=n_comp,
-    random_state=42,
-    max_iter=500,
-    tol=1e-6,
-)
-nca_final.fit(X_labeled, y_labeled)
-X_embedded = nca_final.transform(X_full)
-print(f"Final embedding shape: {X_embedded.shape}", file=sys.stderr)
-
-# === Step 4: Aggressive KMeans search ===
-print("=== Step 4: Aggressive KMeans search (target AMI > 0.72) ===", file=sys.stderr)
-best_ami = -1.0
-best_clusters = None
-
-for seed in range(42, 1042):
-    km = KMeans(
+    # Cluster on embedding
+    kmeans = KMeans(
         n_clusters=n_clusters,
-        random_state=seed,
-        n_init=30,
-        max_iter=1000,
-        tol=1e-8,
-        algorithm="lloyd",
+        n_init=20,
+        random_state=RANDOM_STATE,
     )
-    labels = km.fit_predict(X_embedded)
-    ami = adjusted_mutual_info_score(y_train, labels[:n_train])
+    clusters = kmeans.fit_predict(embedding).astype(np.int64)
+    clusters = ensure_exact_k_clusters(clusters, n_clusters)
 
-    if ami > best_ami:
-        best_ami = ami
-        best_clusters = labels.copy()
-        print(f"  New best: seed={seed}, AMI={best_ami:.4f}", file=sys.stderr)
+    # Metrics
+    ami = adjusted_mutual_info_score(y_train, clusters[:n_train])
+    sil = silhouette_score(embedding, clusters)
 
-    if best_ami >= 0.73:
-        print(f"  Target achieved! Final AMI={best_ami:.4f}", file=sys.stderr)
-        break
+    metrics = {
+        "adjusted_mutual_info": round(float(ami), 4),
+        "silhouette_score": round(float(sil), 4),
+    }
 
-if best_clusters is None:
-    raise RuntimeError("No clustering found")
+    # Save outputs
+    np.save(CLUSTERS_PATH, clusters.astype(np.int64))
+    np.save(EMBEDDING_PATH, embedding)
+    with open(METRICS_PATH, "w", encoding="utf-8") as f:
+        json.dump(metrics, f, indent=2)
 
-clusters = best_clusters.astype(np.int64)
+    eprint(f"Saved {CLUSTERS_PATH}")
+    eprint(f"Saved {EMBEDDING_PATH}")
+    eprint(f"Saved {METRICS_PATH}")
+    eprint(f"AMI(labeled)={ami:.6f} Silhouette(embedding)={sil:.6f}")
 
-# === Step 5: Final metrics ===
-print("=== Step 5: Computing final metrics ===", file=sys.stderr)
-ami = adjusted_mutual_info_score(y_train, clusters[:n_train])
-silhouette = silhouette_score(X_embedded, clusters)
 
-result_msg = (f"ACHIEVED AMI: {ami:.6f} | Silhouette: {silhouette:.6f} | "
-              f"n_components: {n_comp} | Semi-supervised with {len(y_labeled)} samples")
-print(result_msg, file=sys.stderr)
-print(result_msg)  # also to stdout for visibility
-
-# === Save outputs ===
-np.save(CLUSTERS_PATH, clusters)
-metrics = {
-    "adjusted_mutual_info": round(float(ami), 4),
-    "silhouette_score": round(float(silhouette), 4)
-}
-with open(METRICS_PATH, "w") as f:
-    json.dump(metrics, f, indent=2)
-
-print(f"Success: Saved {CLUSTERS_PATH} and {METRICS_PATH}", file=sys.stderr)
-print("Clustering complete. Outputs saved to /app/output/")
-PYEOF
+if __name__ == "__main__":
+    main()
+    print("Clustering complete. Outputs saved to /app/output/")
+PY

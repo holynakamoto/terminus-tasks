@@ -18,10 +18,15 @@ RUN apt-get update && apt-get install -y \
 RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install uv
 
-# Install Rust
+# Install Rust (make toolchain available in subsequent RUNs and in interactive shells)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
 ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Pre-flight: ensure cargo/rustc are usable (helps fail fast if rustup didn't install correctly)
+RUN cargo --version && rustc --version
 
 # Move OpenSSL to non-standard location to simulate a custom installation
 # pkg-config won't find it there without proper configuration
@@ -40,5 +45,15 @@ RUN mkdir -p /opt/openssl/lib /opt/openssl/include \
 
 WORKDIR /app
 
-# Copy the broken Rust project
+# Copy the Rust project as a directory.
+# This avoids brittle builds when task packagers/build contexts drop "loose" files
+# (e.g., wrapper.h) and keeps the image layout identical to the repo.
 COPY project/ /app/
+
+# Ensure wrapper.h exists during the image build.
+# Prefer the repo-provided file if present, but fall back to a minimal header.
+RUN if [ -f /app/wrapper.h ]; then \
+    echo "wrapper.h already present in image layer"; \
+    else \
+    printf '%s\n' '#include <unistd.h>' > /app/wrapper.h; \
+    fi

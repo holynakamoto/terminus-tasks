@@ -6,16 +6,38 @@ phases:
       - echo "================================================"
       - echo "Running quality checks"
       - echo "================================================"
+      - echo "CodeBuild environment introspection"
+      - echo "CODEBUILD_BUILD_IMAGE=${CODEBUILD_BUILD_IMAGE:-<unset>}"
+      - echo "CODEBUILD_WEBHOOK_HEAD_REF=${CODEBUILD_WEBHOOK_HEAD_REF:-<unset>}"
+      - echo "CODEBUILD_SOURCE_VERSION=${CODEBUILD_SOURCE_VERSION:-<unset>}"
+      - echo "CODEBUILD_RESOLVED_SOURCE_VERSION=${CODEBUILD_RESOLVED_SOURCE_VERSION:-<unset>}"
+      - echo "CODEBUILD_BUILD_ID=${CODEBUILD_BUILD_ID:-<unset>}"
+      - echo "CODEBUILD_SRC_DIR=${CODEBUILD_SRC_DIR:-<unset>}"
+      - echo "================================================"
+      - echo "/etc/os-release"
+      - cat /etc/os-release || true
+      - echo "================================================"
+      - echo "uname -a"
+      - uname -a || true
+      - echo "uname -m"
+      - uname -m || true
+      - echo "================================================"
+      - echo "Tool versions"
+      - (python --version || true) && (python3 --version || true)
+      - (pip --version || true) && (pip3 --version || true)
+      - (git --version || true)
+      - (docker --version || true)
+      - echo "================================================"
       - echo "Installing uv"
       # Try multiple uv installation methods with fallbacks
       - curl -LsSf https://astral.sh/uv/install.sh | sh || {
-          echo "Curl method failed, trying pip install...";
-          pip install uv || {
-              echo "Pip failed, trying python -m pip...";
-              python -m pip install uv || {
-                  echo "All uv installation methods failed, continuing without uv...";
-              };
-          };
+        echo "Curl method failed, trying pip install...";
+        pip install uv || {
+        echo "Pip failed, trying python -m pip...";
+        python -m pip install uv || {
+        echo "All uv installation methods failed, continuing without uv...";
+        };
+        };
         }
       # Source uv environment if installation succeeded
       - if [ -f "$HOME/.local/bin/env" ]; then source $HOME/.local/bin/env; else export PATH="$HOME/.local/bin:$PATH"; fi

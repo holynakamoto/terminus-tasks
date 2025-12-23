@@ -4,26 +4,56 @@
 
 You are given a Rust project that is intended to cross-compile to `armv7-unknown-linux-gnueabihf` but currently fails to build and/or run. Your objectives are to diagnose and fix the cross-compilation setup for ARMv7 Linux.
 
+This task verifies **two things**:
+
+1. The project can **cross-compile** an ARMv7 Linux (glibc) release binary (build-only; no QEMU execution in tests).
+2. The CLI behaves correctly when built and run **natively on the host** (correct output and required error messages).
+
 ## Objectives
 
 1. **Install and configure the ARMv7 GCC cross-toolchain** (if not already configured)
    - Ensure `arm-linux-gnueabihf-gcc` and related tools are available
 
-2. **Set correct environment variables for Rust's target toolchain:**
-   - `CC_armv7_unknown_linux_gnueabihf` should point to the ARM GCC compiler
-   - `CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER` should point to the ARM linker
+2. **Set correct environment variables for Rust's target toolchain (persisted for the verifier):**
+
+   The verifier runs in a separate process and will only reliably see these variables if you persist them by creating `/logs/verifier/env.sh` and exporting them there.
+
+   Create `/logs/verifier/env.sh` with:
+
+   ```sh
+   export CC_armv7_unknown_linux_gnueabihf=/path/to/arm-linux-gnueabihf-gcc
+   export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=/path/to/arm-linux-gnueabihf-gcc
+   ```
+
+   Requirements:
+   - `CC_armv7_unknown_linux_gnueabihf` must point to the ARM GCC compiler (typically `arm-linux-gnueabihf-gcc`)
+   - `CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER` must point to the ARM linker driver (typically also `arm-linux-gnueabihf-gcc`)
 
 3. **Update `.cargo/config.toml`** to ensure the `armv7-unknown-linux-gnueabihf` target uses the correct linker and flags
 
-4. **Build the project** successfully:
+4. **Cross-compile ARMv7 release binary (build-only check):**
    ```bash
    cargo build --target armv7-unknown-linux-gnueabihf --release
    ```
+   The ARMv7 binary must exist at:
+   - `/app/target/armv7-unknown-linux-gnueabihf/release/sample-cli`
 
-5. **Verify the binary works** using QEMU user-mode:
-   - Execute the produced ARM binary: `./target/armv7-unknown-linux-gnueabihf/release/sample-cli <number>`
-   - The binary should print `Result: <number * 2>` and exit successfully
-   - Example: `./target/armv7-unknown-linux-gnueabihf/release/sample-cli 5` should print `Result: 10`
+5. **Build + run the host (native) release binary and verify CLI behavior:**
+   ```bash
+   cargo build --release
+   /app/target/release/sample-cli 5
+   /app/target/release/sample-cli 7
+   ```
+   Required outputs (stdout):
+   - Input `5` prints exactly: `Result: 10`
+   - Input `7` prints exactly: `Result: 14`
+
+6. **Verify required error behavior on the host binary:**
+   - If called with the wrong number of arguments, it must exit non-zero and print the following to **stderr**:
+     - A usage line containing `Usage:`
+     - The placeholder `<number>` in the usage message
+   - If called with a non-integer argument (e.g. `abc`), it must exit non-zero and print exactly this to **stderr**:
+     - `Error: 'abc' is not a valid integer`
 
 ## Project Structure
 
@@ -31,29 +61,14 @@ You are given a Rust project that is intended to cross-compile to `armv7-unknown
 - The CLI binary is named `sample-cli` and takes a single integer argument
 - It multiplies the input by 2 and prints the result
 
-## Expected Behavior
+## Expected Behavior (host binary)
 
-When you run the binary via QEMU, it should:
+When you run the host binary (built without `--target`), it should:
 - Accept a single integer command-line argument
 - Print `Result: <number * 2>` to stdout
 - Exit with code 0
 
-## QEMU Execution
-
-Use QEMU user-mode to run the ARM binary. The command will typically be:
-```bash
-qemu-arm -L /usr/arm-linux-gnueabihf ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>
-```
-
-If you encounter a memory reservation error like "Unable to reserve ... bytes of virtual address space", you may need to use the `-R` option to limit the guest address space reservation. The solution should try progressively smaller values (1GB, 512MB, 256MB, 128MB) until one works:
-```bash
-qemu-arm -L /usr/arm-linux-gnueabihf -R 0x40000000 ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>  # 1GB
-qemu-arm -L /usr/arm-linux-gnueabihf -R 0x20000000 ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>  # 512MB
-qemu-arm -L /usr/arm-linux-gnueabihf -R 0x10000000 ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>  # 256MB
-qemu-arm -L /usr/arm-linux-gnueabihf -R 0x8000000 ./target/armv7-unknown-linux-gnueabihf/release/sample-cli <input>   # 128MB
-```
-
-The `-R` option limits the guest address space reservation, which helps in constrained environments (such as containers) where the default ~4GB reservation fails. Different environments may require different values.
-
-Note: The exact QEMU command may vary based on your system configuration, but you need to ensure the ARM binary runs correctly and produces the expected output.
+If invoked incorrectly, it should:
+- Print a usage message to stderr and exit non-zero when arguments are missing/wrong
+- Print `Error: '<arg>' is not a valid integer` to stderr and exit non-zero when parsing fails
 

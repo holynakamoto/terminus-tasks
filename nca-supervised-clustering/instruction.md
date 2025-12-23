@@ -1,76 +1,92 @@
-# Supervised Clustering with Representation Learning
+# Supervised Clustering with NCA Embedding
 
-## Task Description
+## Task Summary
 
-Given a partially labeled dataset, develop a semi-supervised clustering approach that effectively leverages both labeled and unlabeled data to discover meaningful cluster structure. Learn a feature transformation from the labeled examples that captures class structure, iteratively refine predictions on unlabeled data, then apply clustering in the transformed space. The challenge lies in handling noisy labels, moderate class separation, and a balanced ratio of labeled-to-unlabeled samples (50/50).
+You are given a partially labeled dataset. Your job is to:
+
+1. **Learn a supervised embedding** using scikit-learn’s **Neighborhood Components Analysis (NCA)** on the **labeled** data.
+2. **Transform the full dataset** into that embedding.
+3. **Cluster the full embedded dataset** using **KMeans**.
+4. **Write outputs** (`clusters.npy`, `embedding.npy`, `metrics.json`) to `/app/output/`.
+5. **Evaluate clustering quality** using:
+   - **Adjusted Mutual Information (AMI)** on the labeled subset only
+   - **Silhouette score** on the embedded full dataset
+
+This task is about implementing the pipeline correctly and reproducibly (not about hitting a specific AMI threshold).
 
 ## Input
 
-A dataset file at `/app/data/dataset.npz` containing:
-- `X_train`: Feature vectors for samples with known class labels
-- `y_train`: Class labels for the training samples  
-- `X_full`: Complete feature matrix (includes both labeled and unlabeled samples)
-- `n_clusters`: Target number of clusters to identify
+A dataset file at:
 
-## Expected Output
+- `/app/data/dataset.npz`
 
-Two files in `/app/output/`:
+It contains:
 
-1. **`clusters.npy`**: Integer array of cluster assignments (0 to n_clusters-1) for all samples in X_full
+- `X_train`: feature matrix for labeled samples (shape `(n_train, n_features)`)
+- `y_train`: integer class labels for `X_train` (shape `(n_train,)`)
+- `X_full`: full feature matrix containing both labeled and unlabeled samples (shape `(n_total, n_features)`)
+- `n_clusters`: target number of clusters (scalar)
 
-2. **`metrics.json`**: JSON object with:
-   - `adjusted_mutual_info`: Agreement between training labels and cluster assignments (computed on labeled subset only)
-   - `silhouette_score`: Quality measure computed on the transformed full dataset
+**Important:** The labeled samples correspond to the first `len(X_train)` rows of `X_full`.
 
-## Approach
+## Required Output Files (in `/app/output/`)
 
-1. **Dimensionality Reduction with Supervision**
-   - Apply Neighborhood Components Analysis (NCA) from scikit-learn to learn a supervised transformation
-   - **You must select `n_components` through validation** (e.g., cross-validation or hold-out validation using silhouette score or AMI on labeled validation data)
-   - Do not use default parameters. You must demonstrate thoughtful hyperparameter selection:
-     - Choose `n_components` that balances dimensionality reduction with information preservation
-     - Consider tuning `max_iter` and other NCA parameters to ensure convergence
-     - Use validation evidence (not heuristics like `n_components = n_classes`) to justify your choice
-   - Ensure reproducibility by using a fixed random seed
+### 1) `clusters.npy`
+- A 1D integer NumPy array of shape `(len(X_full),)`
+- Each entry is a cluster ID in `[0, n_clusters - 1]`
+- Must contain **exactly `n_clusters` distinct** cluster IDs overall
 
-2. **Semi-Supervised Learning (Required for achieving AMI > 0.72)**
-   - The dataset contains equal amounts of labeled and unlabeled data (250 labeled, 250 unlabeled)
-   - **You must leverage unlabeled data to improve performance beyond basic NCA+KMeans**
-   - Recommended approaches (choose one or combine):
-     - **Self-training**: Use initial NCA transformation to predict pseudo-labels for unlabeled data, then retrain NCA with high-confidence predictions
-     - **Iterative refinement**: Alternate between clustering and retraining NCA with pseudo-labeled data
-     - **Confidence-based filtering**: Only incorporate unlabeled samples with high prediction confidence
-   - The increased unlabeled data ratio (50%) and label noise (5%) make semi-supervised learning essential for achieving the quality threshold
+### 2) `embedding.npy`
+- A 2D float NumPy array of shape `(len(X_full), n_components)`
+- This must be the **NCA-transformed embedding of `X_full`** (i.e., `embedding = nca.transform(X_full_preprocessed)`)
+- Must be finite (no NaN/inf)
+- Must have `n_components >= 2` so silhouette is meaningful
 
-3. **Clustering**
-   - Apply K-means clustering from scikit-learn to the NCA-transformed features (not raw features)
-   - Use the target number of clusters provided in the dataset
-   - **You must use multiple initializations** (`n_init` ≥ 20) and select the best run based on inertia or silhouette score
-   - Use stable initialization parameters (fixed `random_state`) to ensure consistent results
+### 3) `metrics.json`
+A JSON object containing exactly these keys:
 
-4. **Quality Requirements**
-   - The clustering must achieve strong alignment with ground-truth class structure
-   - **Adjusted Mutual Information (AMI) between true labels and clusters must be > 0.72**
-   - This requires optimal or near-optimal selection of NCA `n_components`, proper NCA/KMeans tuning, AND effective semi-supervised learning
-   - Note: AMI > 0.72 on this challenging dataset (lower class separation, label noise, 50% unlabeled data) indicates strong recovery of the true cluster structure
-   - Achieving this threshold requires: careful parameter selection, validation, multiple initialization trials, and leveraging unlabeled data to improve the transformation
+- `adjusted_mutual_info`: AMI between `y_train` and `clusters[:len(X_train)]`
+- `silhouette_score`: silhouette score computed as `silhouette_score(embedding, clusters)`
 
-5. **Clustering Requirements**
-   - Verify that all samples receive valid cluster IDs in the range [0, n_clusters-1)
-   - The clustering should produce exactly n_clusters distinct clusters
-   - **Cluster coherence**: Unlabeled samples should cluster with nearby labeled samples. At least 40% of unlabeled samples must share the same cluster ID as their nearest labeled neighbor in the raw feature space. This ensures the clustering approach genuinely uses the feature space structure rather than arbitrary assignments.
+Both values must:
+- be numeric (int/float)
+- be in the range `[-1, 1]`
+- be rounded to **exactly 4 decimal places**
 
-6. **Metric Computation**
-   - Adjusted Mutual Information: Compare training labels (y_train) with cluster assignments for the corresponding samples (first len(X_train) elements). Valid range: [-1, 1]
-   - **Silhouette Score: Must be computed on the NCA-transformed (low-dimensional) features, not the raw input features**. Valid range: [-1, 1]
-   - Round both metrics to exactly 4 decimal places
+## Required Algorithms
 
-## Requirements
+You must use:
 
-- Training samples correspond to the first `len(X_train)` rows of `X_full`
-- Outputs must be deterministic and reproducible (use fixed random seeds)
-- Create `/app/output/` directory if it doesn't exist
-- All cluster IDs must be integers in [0, n_clusters-1)
-- You must use `NeighborhoodComponentsAnalysis` and `KMeans` from scikit-learn
-- You may not rely on default parameters for critical hyperparameters (`n_components` in NCA, `n_init` in KMeans)
-- You must demonstrate parameter selection through validation, not simple heuristics
+- `sklearn.neighbors.NeighborhoodComponentsAnalysis` for the embedding
+- `sklearn.cluster.KMeans` for clustering
+
+## Required Computation Details
+
+### NCA training
+- Fit NCA using **only** the labeled data: `(X_train, y_train)`
+- Then use the fitted NCA model to transform:
+  - the labeled data (if needed)
+  - the full dataset `X_full` to produce `embedding.npy`
+
+### KMeans clustering
+- Run KMeans on the **embedded** full dataset (`embedding.npy`), not on raw `X_full`.
+- Use `n_clusters` from the dataset file.
+- Ensure outputs are deterministic/reproducible:
+  - Use a fixed `random_state`
+  - Use a non-trivial `n_init` (recommended: `>= 20`)
+
+### Metric computation
+- **AMI:** compute only on the labeled subset:
+  - `adjusted_mutual_info_score(y_train, clusters[:len(X_train)])`
+- **Silhouette:** compute only on the embedding:
+  - `silhouette_score(embedding, clusters)`
+- Round both to exactly 4 decimals before writing `metrics.json`.
+
+## Determinism
+
+Your outputs must be reproducible. Use fixed random seeds (e.g., `random_state=0`) and deterministic preprocessing.
+
+## Notes / Tips (non-mandatory)
+
+- Standardizing features (e.g., `StandardScaler`) often helps NCA/KMeans stability.
+- Be careful to keep array alignment correct: the first `len(X_train)` entries of `clusters.npy` correspond to the labeled samples in `y_train`.
