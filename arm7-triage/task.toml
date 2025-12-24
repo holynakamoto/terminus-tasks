@@ -1,6 +1,7 @@
 version = "1.0"
 
 [metadata]
+name = "arm7-triage"
 author_name = "Nick Moore"
 author_email = "nick.moore@pm.me"
 category = "build-and-dependency-management"

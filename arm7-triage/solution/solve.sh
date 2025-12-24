@@ -29,6 +29,8 @@ cargo --version
 rustup --version
 
 echo "=== [2/6] Installing ARMv7 toolchain + ARM zlib dev (build-only) ==="
+# Enable multi-arch support for installing ARM packages
+dpkg --add-architecture armhf
 apt-get update
 apt-get install -y \
   gcc-arm-linux-gnueabihf \
