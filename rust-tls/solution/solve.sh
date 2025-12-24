@@ -105,12 +105,9 @@ pkg-config --exists openssl || { echo "pkg-config cannot find openssl"; exit 1; 
 echo "OpenSSL Cflags: $(pkg-config --cflags openssl)"
 echo "OpenSSL Libs: $(pkg-config --libs openssl)"
 
-# Remove the TLS version check block that uses deprecated API
-# Delete lines 25-31 (comment, code block, closing brace, and blank line)
-sed -i '25,31d' examples/https_client.rs
-
-# Suppress bindgen warnings
-sed -i '1i #![allow(non_camel_case_types)]\n#![allow(non_upper_case_globals)]\n#![allow(non_snake_case)]\n#![allow(dead_code)]\n#![allow(unused_variables)]' build.rs
+# Fix build.rs to tell bindgen where to find OpenSSL headers
+echo "Modifying build.rs to add OpenSSL include path for bindgen..."
+sed -i '/\.header("wrapper\.h")/a\        .clang_arg("-I/opt/openssl/include")' build.rs
 
 # Clean previous artifacts and build
 cargo clean

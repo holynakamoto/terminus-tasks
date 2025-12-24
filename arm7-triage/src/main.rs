@@ -1,5 +1,11 @@
 use std::env;
 
+// Force linking against zlib (via libz-sys) by referencing a zlib symbol.
+// This is used to ensure pkg-config based linkage is exercised during cross-compilation.
+extern "C" {
+    fn zlibVersion() -> *const ::std::os::raw::c_char;
+}
+
 fn double(n: i32) -> i32 {
     n * 2
 }
@@ -14,6 +20,12 @@ fn parse_arg(arg: &str) -> Result<i32, String> {
 }
 
 fn main() {
+    // Reference zlibVersion so the linker must resolve it (ensures zlib is actually linked).
+    // We don't need to use the returned string for correctness.
+    unsafe {
+        let _ = zlibVersion();
+    }
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 2 {

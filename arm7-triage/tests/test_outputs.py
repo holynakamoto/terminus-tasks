@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import subprocess
 
 CANARY_STRINGS = [
@@ -155,6 +156,8 @@ def test_armv7_cross_build_artifacts_exist_build_only() -> None:
     Requirements verified:
     - Cross build produces armv7-unknown-linux-gnueabihf release binary at:
       /app/target/armv7-unknown-linux-gnueabihf/release/sample-cli
+    - The produced binary is an ARM ELF
+    - The produced binary dynamically links against zlib (libz.so.1)
     """
     root = _app_root()
 
@@ -174,6 +177,27 @@ def test_armv7_cross_build_artifacts_exist_build_only() -> None:
         root / "target" / "armv7-unknown-linux-gnueabihf" / "release" / "sample-cli"
     )
     _assert_binary_exists(arm_bin)
+
+    # Verify the binary is an ARM ELF.
+    file_out = _run(["file", str(arm_bin)], cwd=root)
+    assert file_out.returncode == 0, (
+        f"`file` failed:\nSTDOUT:\n{file_out.stdout}\nSTDERR:\n{file_out.stderr}"
+    )
+    file_txt = file_out.stdout.strip()
+    assert "ELF" in file_txt and "ARM" in file_txt, (
+        f"Expected an ARM ELF binary, got: {file_txt!r}"
+    )
+
+    # Verify it dynamically links libz.so.1 (forces correct pkg-config cross-linking for libz-sys).
+    readelf_out = _run(["readelf", "-d", str(arm_bin)], cwd=root)
+    assert readelf_out.returncode == 0, (
+        f"`readelf -d` failed:\nSTDOUT:\n{readelf_out.stdout}\nSTDERR:\n{readelf_out.stderr}"
+    )
+    dyn_txt = readelf_out.stdout
+    assert re.search(r"\(NEEDED\).*libz\.so\.1", dyn_txt), (
+        "Expected libz.so.1 in DT_NEEDED entries, but it was not found.\n"
+        f"readelf -d output:\n{dyn_txt}"
+    )
 
     # Basic anti-cheating: the binary should not literally contain our canary strings.
     # (We only do a lightweight scan and only if we can safely read bytes.)
@@ -207,6 +231,40 @@ def test_verifier_env_sh_not_modified_by_tests() -> None:
         _assert_no_canaries_in_text(
             reward.read_text(errors="replace"), label="/logs/verifier/reward.txt"
         )
+
+
+def test_pkg_config_cross_configured() -> None:
+    """
+    Verify pkg-config was properly configured for cross-compilation.
+
+    This ensures agents correctly set pkg-config environment variables to find
+    ARM zlib libraries instead of host libraries.
+
+    Requirements verified:
+    - PKG_CONFIG_ALLOW_CROSS=1 (allows cross-compilation lookups)
+    - PKG_CONFIG_SYSROOT_DIR points to ARM sysroot
+    - PKG_CONFIG_LIBDIR or PKG_CONFIG_PATH includes ARM pkgconfig paths
+    """
+    env_file = pathlib.Path("/logs/verifier/env.sh")
+    assert env_file.exists(), (
+        "Expected /logs/verifier/env.sh to exist (created by solution script)"
+    )
+
+    content = env_file.read_text()
+
+    # Must have cross-compilation pkg-config vars
+    assert "PKG_CONFIG_ALLOW_CROSS=1" in content or 'PKG_CONFIG_ALLOW_CROSS="1"' in content, (
+        "PKG_CONFIG_ALLOW_CROSS not set in env.sh - required for cross-compilation"
+    )
+
+    assert "PKG_CONFIG_SYSROOT_DIR" in content, (
+        "PKG_CONFIG_SYSROOT_DIR not set in env.sh - pkg-config won't find ARM libs"
+    )
+
+    # Verify it points to ARM sysroot (not host)
+    assert "arm-linux-gnueabihf" in content, (
+        "pkg-config not configured for ARM target - should reference arm-linux-gnueabihf sysroot"
+    )
 
 
 def test_task_uses_absolute_app_path_in_environment() -> None:

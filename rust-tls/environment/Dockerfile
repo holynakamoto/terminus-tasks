@@ -3,20 +3,14 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install all build dependencies in one layer to speed up builds
-# Install Python, Rust, pkg-config, libssl-dev, and libclang-dev
+# Install Rust, pkg-config, libssl-dev, and libclang-dev
 RUN apt-get update && apt-get install -y \
     curl \
-    python3 \
-    python3-pip \
     build-essential \
     pkg-config \
     libssl-dev \
     libclang-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# Install uv using pip (more reliable than curl in restricted environments)
-RUN python3 -m pip install --upgrade pip && \
-    python3 -m pip install uv
 
 # Install Rust (make toolchain available in subsequent RUNs and in interactive shells)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal

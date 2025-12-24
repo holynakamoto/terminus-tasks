@@ -28,11 +28,13 @@ rustc --version
 cargo --version
 rustup --version
 
-echo "=== [2/6] Installing ARMv7 toolchain (build-only) ==="
+echo "=== [2/6] Installing ARMv7 toolchain + ARM zlib dev (build-only) ==="
 apt-get update
 apt-get install -y \
   gcc-arm-linux-gnueabihf \
   libc6-dev-armhf-cross \
+  zlib1g-dev:armhf \
+  pkg-config \
   ca-certificates \
   file \
   binutils
@@ -56,18 +58,25 @@ export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER="$ARM_GCC_PATH"
 export CC_armv7_unknown_linux_gnueabihf="$ARM_GCC_PATH"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER="$ARM_GCC_PATH"
 
+# Enable pkg-config based cross-compilation for sysrooted ARM libs (e.g., libz-sys).
+# These environment variables are required so build scripts can locate ARM .pc files and libs.
+export PKG_CONFIG_ALLOW_CROSS=1
+export PKG_CONFIG_SYSROOT_DIR=/usr/arm-linux-gnueabihf
+export PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig
+export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig
+
 # Persist for verifier (runs in separate shell)
 mkdir -p /logs/verifier
 # Harbor convention: verifier can source this file
 cat > /logs/verifier/env.sh <<EOF
-# Add Rust binaries to PATH
-export PATH="/usr/local/cargo/bin:\${PATH}"
-
-# Cross-compilation environment variables
 export CC_armv7_unknown_linux_musleabihf="$ARM_GCC_PATH"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER="$ARM_GCC_PATH"
 export CC_armv7_unknown_linux_gnueabihf="$ARM_GCC_PATH"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER="$ARM_GCC_PATH"
+export PKG_CONFIG_ALLOW_CROSS=1
+export PKG_CONFIG_SYSROOT_DIR=/usr/arm-linux-gnueabihf
+export PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig
+export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig
 EOF
 chmod +x /logs/verifier/env.sh
 
@@ -100,6 +109,10 @@ CC_armv7_unknown_linux_musleabihf = "$ARM_GCC_PATH"
 CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER = "$ARM_GCC_PATH"
 CC_armv7_unknown_linux_gnueabihf = "$ARM_GCC_PATH"
 CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER = "$ARM_GCC_PATH"
+PKG_CONFIG_ALLOW_CROSS = "1"
+PKG_CONFIG_SYSROOT_DIR = "/usr/arm-linux-gnueabihf"
+PKG_CONFIG_LIBDIR = "/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig"
+PKG_CONFIG_PATH = "/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig"
 EOF
 
 echo "=== Effective Cargo config ==="

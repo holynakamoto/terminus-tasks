@@ -13,6 +13,7 @@ You are given a Rust project that fails to build due to system dependency config
 
 2. **Resolve the dependency issues:**
    - Install the correct system packages (note: some may already be installed but wrong versions)
+   - **IMPORTANT:** You must use LLVM 14 specifically for libclang. The system has LLVM 14 available at `/usr/lib/llvm-14/`. Bindgen requires libclang from LLVM 14, not other versions.
    - Configure environment variables appropriately
    - Ensure pkg-config can locate required libraries
 
@@ -50,7 +51,40 @@ When you run `cargo run --release --example https_client`, it should:
 - Connect to `https://www.rust-lang.org` over HTTPS
 - Display the TLS version (TLSv1.2 or higher)
 - Print "Successfully connected to https://www.rust-lang.org"
+- Display actual HTTP response content from rust-lang.org with ALL of the following:
+  - HTML document structure (must include both `<!DOCTYPE` or `<html>` tags)
+  - Rust-lang.org specific content (keywords like "rust-lang", "rustlang", or "Rust")
+  - Complete HTML tag pairs (both opening tags like `<tag>` and closing tags like `</tag>`)
+  - At least 500 characters of content (indicating a real webpage was fetched, not just a static string)
 - Exit with code 0
+
+**Note:** The output validation ensures that a real TLS connection is established, not just simulated output. The presence of actual HTML content from rust-lang.org proves the connection is genuine.
+
+## Anti-Cheating Measures
+
+The test suite includes multiple layers of verification to ensure a real TLS connection is made:
+
+1. **Binary Analysis:**
+   - Verifies the binary is linked against OpenSSL libraries from `/opt/openssl`
+   - Checks for critical OpenSSL symbols (`SSL_connect`, `SSL_CTX_new`, `SSL_read`/`SSL_write`) in the binary
+   - Ensures bindgen-generated bindings are present
+
+2. **Network Syscall Verification (Strongest):**
+   - Uses `strace` to monitor actual system calls during execution
+   - Verifies `connect()` syscalls with `AF_INET` (actual network connection)
+   - Verifies data was sent over the network (`sendto`/`send`/`write`)
+   - Verifies data was received from the network (`recvfrom`/`recv`/`read`)
+   - **This prevents agents from simply printing fake HTML output**
+
+3. **Content Validation:**
+   - Checks for real HTML content from rust-lang.org
+   - Verifies multiple characteristics to make spoofing difficult
+   - Ensures output length is realistic (>200 characters)
+
+4. **Build Artifact Verification:**
+   - Confirms LLVM 14 is used (not other versions)
+   - Validates pkg-config files were created
+   - Checks OpenSSL libraries exist in expected locations
 
 ## Expected Build Artifacts
 

@@ -9,6 +9,7 @@ fn main() {
     // This requires libclang to be available and properly configured
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
+        .clang_arg("-I/opt/openssl/include")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Unable to generate bindings - ensure libclang is installed and LIBCLANG_PATH is set");

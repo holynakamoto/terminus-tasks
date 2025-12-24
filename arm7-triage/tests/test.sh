@@ -185,5 +185,21 @@ run_test () {
 run_test 5 "Result: 10" "test 1"
 run_test 7 "Result: 14" "test 2"
 
-echo "=== [6/6] All tests passed ==="
+echo "=== [6/6] Run pytest suite ==="
+if ! command -v pytest &> /dev/null; then
+    echo "✗ pytest not found in verifier container"
+    echo 0 > /logs/verifier/reward.txt
+    exit 1
+fi
+
+pytest /tests/test_outputs.py -v -rA
+if [ $? -ne 0 ]; then
+    echo "✗ pytest tests failed"
+    echo 0 > /logs/verifier/reward.txt
+    exit 1
+fi
+
+echo "✓ All pytest tests passed"
+
+echo "=== [7/7] All tests passed ==="
 echo 1 > /logs/verifier/reward.txt
