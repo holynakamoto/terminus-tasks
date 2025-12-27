@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-openssl = "0.10.64"
-reqwest = { version = "0.12.4", features = ["blocking", "rustls-tls-native-roots"] }
+# BUG: openssl-sys is needed but might only link libcrypto by default
+# Need to ensure both libssl and libcrypto are linked
+openssl-sys = "0.9"
 
 [build-dependencies]
 bindgen = "0.69.4"
-

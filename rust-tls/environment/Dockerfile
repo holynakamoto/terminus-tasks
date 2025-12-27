@@ -2,14 +2,19 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install all build dependencies in one layer to speed up builds
-# Install Rust, pkg-config, libssl-dev, and libclang-dev
+# Install ALL necessary build dependencies (including python3 for completeness)
+# CRITICAL: Must install LLVM 14 specifically for bindgen
 RUN apt-get update && apt-get install -y \
     curl \
+    python3 \
+    python3-pip \
     build-essential \
     pkg-config \
     libssl-dev \
-    libclang-dev \
+    llvm-14-dev \
+    libclang-14-dev \
+    clang-14 \
+    strace \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust (make toolchain available in subsequent RUNs and in interactive shells)
@@ -44,10 +49,16 @@ WORKDIR /app
 # (e.g., wrapper.h) and keeps the image layout identical to the repo.
 COPY project/ /app/
 
-# Ensure wrapper.h exists during the image build.
-# Prefer the repo-provided file if present, but fall back to a minimal header.
-RUN if [ -f /app/wrapper.h ]; then \
-    echo "wrapper.h already present in image layer"; \
+# Critical fallback: create minimal wrapper.h if the task package doesn't provide it
+RUN if [ ! -f /app/wrapper.h ]; then \
+        printf '%s\n' \
+            '#ifndef WRAPPER_H' \
+            '#define WRAPPER_H' \
+            '#include <unistd.h>' \
+            '#include <stdint.h>' \
+            '#include <stddef.h>' \
+            '#endif' > /app/wrapper.h && \
+        echo "Created fallback wrapper.h"; \
     else \
-    printf '%s\n' '#include <unistd.h>' > /app/wrapper.h; \
+        echo "wrapper.h already exists"; \
     fi

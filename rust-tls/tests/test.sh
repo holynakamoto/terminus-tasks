@@ -162,6 +162,63 @@ if [ $HTML_CHECKS_PASSED -ne 4 ]; then
     exit 1
 fi
 echo "✓ Real TLS connection verified (4/4 checks passed)"
+# Test 9: Verify actual network syscalls using strace (STRONGEST anti-cheat)
+echo "Testing: Network syscalls verification with strace"
+if ! command -v strace &> /dev/null; then
+    echo "⚠ strace not available, skipping network syscall verification"
+else
+    # Run with strace and capture syscalls
+    STRACE_OUTPUT=$(strace -e trace=connect,sendto,send,write,recvfrom,recv,read -o /tmp/strace.log "$BINARY_PATH" 2>&1 || true)
+    STRACE_EXIT=$?
+    
+    # Check strace log for network syscalls
+    if [ ! -f /tmp/strace.log ]; then
+        echo "✗ strace log not found"
+        echo 0 > /logs/verifier/reward.txt
+        exit 1
+    fi
+    
+    # Verify connect() syscall was made (actual network connection)
+    if ! grep -q "connect(" /tmp/strace.log; then
+        echo "✗ No connect() syscall found - fake connection detected"
+        echo "strace log excerpt:"
+        head -20 /tmp/strace.log || true
+        echo 0 > /logs/verifier/reward.txt
+        exit 1
+    fi
+    
+    # Verify connect() was to AF_INET (IPv4) - actual network, not unix socket
+    if ! grep -q "connect.*AF_INET" /tmp/strace.log && ! grep -qE "connect.*sin_family=AF_INET" /tmp/strace.log; then
+        # Check if it's a numeric connect (AF_INET = 2)
+        if ! grep -qE "connect.*\[.*2.*\]" /tmp/strace.log; then
+            echo "⚠ Could not verify AF_INET in connect (may be format-dependent)"
+        fi
+    fi
+    
+    # Verify data was sent (sendto/send/write)
+    SEND_COUNT=$(grep -cE "(sendto|send|write)" /tmp/strace.log || echo "0")
+    if [ "$SEND_COUNT" -eq 0 ]; then
+        echo "✗ No send/write syscalls found - no data was sent"
+        echo 0 > /logs/verifier/reward.txt
+        exit 1
+    fi
+    
+    # Verify data was received (recvfrom/recv/read)
+    RECV_COUNT=$(grep -cE "(recvfrom|recv|read)" /tmp/strace.log || echo "0")
+    if [ "$RECV_COUNT" -eq 0 ]; then
+        echo "✗ No recv/read syscalls found - no data was received"
+        echo 0 > /logs/verifier/reward.txt
+        exit 1
+    fi
+    
+    echo "✓ Network syscalls verified:"
+    echo "  - connect() syscall: ✓"
+    echo "  - send/write syscalls: $SEND_COUNT"
+    echo "  - recv/read syscalls: $RECV_COUNT"
+    
+    # Clean up strace log
+    rm -f /tmp/strace.log
+fi
 # Test 10: Verify LLVM 14 is installed AND actually used (anti-cheat - ensures correct version)
 echo "Testing: LLVM 14 installed and used by bindgen"
 if [ ! -d "/usr/lib/llvm-14" ] && [ ! -d "/usr/lib/x86_64-linux-gnu/llvm-14" ]; then
