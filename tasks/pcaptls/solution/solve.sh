@@ -170,6 +170,124 @@ def create_test_captures():
         import traceback
         traceback.print_exc()
         return
+
+    # 4. Client offers export but server doesn't select it
+    print("Generating offered_not_selected.pcap...")
+    try:
+        offered_packets = []
+        # Client offers export cipher (0x0003) but server selects secure cipher
+        ch_data = make_client_hello(0x0303, [0x0003, 0x1301, 0x1302])  # Offers export + secure
+        offered_packets.append(Ether()/IP(src="192.168.1.150", dst="1.1.1.1")/TCP(sport=55555, dport=443, flags="PA")/Raw(load=ch_data))
+
+        sh_data = make_server_hello(0x0303, 0x1301)  # Selects secure cipher
+        offered_packets.append(Ether()/IP(src="1.1.1.1", dst="192.168.1.150")/TCP(sport=443, dport=55555, flags="PA")/Raw(load=sh_data))
+
+        wrpcap("test_captures/offered_not_selected.pcap", offered_packets)
+        print("  ✓ Created offered_not_selected.pcap (export offered but not selected)")
+        print()
+    except Exception as e:
+        print(f"  Error creating offered_not_selected pcap: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+
+    # 5. Multiple different export ciphers
+    print("Generating multiple_export.pcap...")
+    try:
+        multi_export_packets = []
+        # Session with different export cipher (0x0006)
+        ch_data = make_client_hello(0x0301, [0x0006, 0x000B])
+        multi_export_packets.append(Ether()/IP(src="10.0.0.100", dst="8.8.8.8")/TCP(sport=60000, dport=443, flags="PA")/Raw(load=ch_data))
+
+        sh_data = make_server_hello(0x0301, 0x0006)  # TLS_RSA_EXPORT_WITH_RC2_CBC_40_MD5
+        multi_export_packets.append(Ether()/IP(src="8.8.8.8", dst="10.0.0.100")/TCP(sport=443, dport=60000, flags="PA")/Raw(load=sh_data))
+
+        wrpcap("test_captures/multiple_export.pcap", multi_export_packets)
+        print("  ✓ Created multiple_export.pcap (different export cipher)")
+        print()
+    except Exception as e:
+        print(f"  Error creating multiple_export pcap: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+
+    # 6. RC4 without export
+    print("Generating rc4_only.pcap...")
+    try:
+        rc4_packets = []
+        # Client offers RC4 cipher (0x0004 - RSA_WITH_RC4_128_MD5) that's not export
+        ch_data = make_client_hello(0x0301, [0x0004, 0x002f])
+        rc4_packets.append(Ether()/IP(src="192.168.1.110", dst="198.51.100.1")/TCP(sport=33333, dport=443, flags="PA")/Raw(load=ch_data))
+
+        sh_data = make_server_hello(0x0301, 0x0004)  # RC4 but not export
+        rc4_packets.append(Ether()/IP(src="198.51.100.1", dst="192.168.1.110")/TCP(sport=443, dport=33333, flags="PA")/Raw(load=sh_data))
+
+        wrpcap("test_captures/rc4_only.pcap", rc4_packets)
+        print("  ✓ Created rc4_only.pcap (RC4 without export)")
+        print()
+    except Exception as e:
+        print(f"  Error creating rc4_only pcap: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+
+    # 7. Weak DH parameters
+    print("Generating weak_dh.pcap...")
+    try:
+        def make_client_hello_with_dh(version, ciphers, supported_groups):
+            """Build ClientHello with supported_groups extension"""
+            # Build handshake body
+            body = struct.pack('>H', version)  # Version
+            body += b'\x00' * 32  # Random
+            body += b'\x00'  # Session ID length
+            body += struct.pack('>H', len(ciphers) * 2)  # Cipher suites length
+            for c in ciphers:
+                body += struct.pack('>H', c)  # Each cipher suite
+            body += b'\x01\x00'  # Compression methods (1 method: null)
+
+            # Extensions
+            extensions = b''
+            # supported_groups extension (type 0x000a)
+            ext_data = struct.pack('>H', len(supported_groups) * 2)  # Length of list
+            for group in supported_groups:
+                ext_data += struct.pack('>H', group)
+            extensions += struct.pack('>H', 0x000a)  # Extension type
+            extensions += struct.pack('>H', len(ext_data))  # Extension length
+            extensions += ext_data
+
+            body += struct.pack('>H', len(extensions))  # Extensions length
+            body += extensions
+
+            # Build handshake message
+            handshake = b'\x01'  # ClientHello type
+            handshake += struct.pack('>I', len(body))[1:]  # Length (3 bytes)
+            handshake += body
+
+            # Build TLS record
+            record = b'\x16'  # Content type: Handshake
+            record += struct.pack('>H', version)  # Version
+            record += struct.pack('>H', len(handshake))  # Length
+            record += handshake
+
+            return record
+
+        weak_dh_packets = []
+        # Use DHE cipher and advertise very weak DH group
+        # Supported groups: 256 (ffdhe2048), but we'll simulate weak 512-bit DH
+        ch_data = make_client_hello_with_dh(0x0303, [0x0033, 0x0039], [256, 257])
+        weak_dh_packets.append(Ether()/IP(src="192.168.1.120", dst="203.0.113.1")/TCP(sport=44444, dport=443, flags="PA")/Raw(load=ch_data))
+
+        sh_data = make_server_hello(0x0303, 0x0033)  # TLS_DHE_RSA_WITH_AES_128_CBC_SHA
+        weak_dh_packets.append(Ether()/IP(src="203.0.113.1", dst="192.168.1.120")/TCP(sport=443, dport=44444, flags="PA")/Raw(load=sh_data))
+
+        wrpcap("test_captures/weak_dh.pcap", weak_dh_packets)
+        print("  ✓ Created weak_dh.pcap (with DH parameters)")
+        print()
+    except Exception as e:
+        print(f"  Error creating weak_dh pcap: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     # Verify packets by reading back
     print("\n  Verifying pcap by reading back...", file=sys.stderr)

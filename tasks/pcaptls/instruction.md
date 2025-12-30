@@ -110,7 +110,7 @@ Export-grade cryptography was intentionally weakened (40-56 bit keys) to comply 
 ### RC4 Ciphers
 RC4 is a stream cipher with well-documented biases that enable practical attacks. Deprecated by RFC 7465 in 2015.
 
-**Cipher IDs**: 0x0003, 0x0004, 0x0005, 0x0017, 0x0018, 0x0020, 0x0024, 0x0028, 0x002F, 0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038, 0x0039, 0x003A, 0x003B, 0x008A, 0x008B, 0x00A6, 0x00A7, 0x00C002, 0x00C007, 0x00C00C, 0x00C011, 0x00C016, 0x00C01B, 0x00C020, 0x00C025, 0x00C02A, 0x00C02F, 0x00C034, 0x00C039
+**Cipher IDs**: 0x0003, 0x0004, 0x0005, 0x0017, 0x0018, 0x0020, 0x0024, 0x0028, 0xC002, 0xC007, 0xC00C, 0xC011, 0xC016, 0xC01B, 0xC020
 
 **Vulnerability Types**:
 - `RC4_CIPHER`: Server selected an RC4 cipher
@@ -135,15 +135,15 @@ DH groups with primes under 1024 bits are vulnerable to pre-computation attacks 
 ## Usage Example
 
 ```bash
-# Basic usage
+# Basic usage (outputs to stdout)
 python3 tls_security_analyzer.py capture.pcap
 
 # Save to file
-python3 tls_security_analyzer.py capture.pcap --output report.json
+python3 tls_security_analyzer.py capture.pcap -o report.json
 
-# Specify method
-python3 tls_security_analyzer.py capture.pcap --method tshark
-python3 tls_security_analyzer.py capture.pcap --method scapy
+# Specify method (tshark or scapy backend)
+python3 tls_security_analyzer.py capture.pcap -m tshark
+python3 tls_security_analyzer.py capture.pcap -m scapy
 
 # Verbose output
 python3 tls_security_analyzer.py capture.pcap -v
