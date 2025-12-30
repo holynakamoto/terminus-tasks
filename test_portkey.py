@@ -7,9 +7,9 @@ import sys
 # Try to use OpenHands' Python interpreter if available (it has LiteLLM installed)
 OPENHANDS_PYTHON = os.path.expanduser("~/.local/share/uv/tools/openhands/bin/python")
 if os.path.exists(OPENHANDS_PYTHON) and not sys.executable.startswith(OPENHANDS_PYTHON):
-    print(f"⚠️  Note: LiteLLM is installed in OpenHands' environment.")
+    print("⚠️  Note: LiteLLM is installed in OpenHands' environment.")
     print(f"   To test with LiteLLM, run: {OPENHANDS_PYTHON} test_portkey.py")
-    print(f"   Or test directly with OpenHands CLI: openhands")
+    print("   Or test directly with OpenHands CLI: openhands")
     print()
 
 # Set environment variables before importing litellm
@@ -41,7 +41,7 @@ try:
         try:
             import pkg_resources
             version = pkg_resources.get_distribution("litellm").version
-        except:
+        except Exception:
             version = "unknown"
     print(f"LiteLLM version: {version}")
     print()

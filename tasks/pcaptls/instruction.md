@@ -1,0 +1,170 @@
+# TLS Security Analyzer
+
+## Task Description
+
+Implement a script that analyzes TLS network traffic captures (pcap files) and generates comprehensive security vulnerability reports.
+
+## Requirements
+
+### 1. Traffic Ingestion
+- Accept pcap files as input
+- Support both tshark and scapy for parsing (fallback if one unavailable)
+- Extract TLS handshake messages (Client Hello, Server Hello)
+
+### 2. Data Extraction
+- Extract all cipher suites offered by clients
+- Extract cipher suite selected by server
+- Extract Diffie-Hellman groups/parameters
+- Extract DH prime sizes when available
+- Record session timestamps and connection metadata (IPs, ports)
+
+### 3. Vulnerability Detection
+- Flag sessions using export-grade cipher suites
+- Flag sessions using RC4 cipher suites
+- Flag DH parameters with primes under 1024 bits
+- Distinguish between offered vs. selected vulnerable ciphers
+
+### 4. Report Generation
+- Output structured JSON report
+- Include per-session analysis with:
+  * Session identifier and timestamp
+  * Source/destination IP and port
+  * Client offered cipher suites (with names)
+  * Server selected cipher suite (with name)
+  * DH groups and prime sizes
+  * List of vulnerabilities detected
+  * Vulnerability status flag
+- Include summary statistics:
+  * Total sessions analyzed
+  * Count of vulnerable sessions
+  * Breakdown by vulnerability type
+
+### 5. Implementation Quality
+- Handle multiple TLS sessions in single pcap
+- Proper error handling for malformed packets
+- Command-line interface with options for output file and analysis method
+- Clear documentation and usage examples
+
+## Expected Output Format
+
+The script should produce JSON output in the following format:
+
+```json
+{
+  "analysis_metadata": {
+    "timestamp": "2024-12-30T15:30:00",
+    "total_sessions": 5,
+    "vulnerable_sessions": 3
+  },
+  "vulnerability_summary": {
+    "export_grade_ciphers": 1,
+    "rc4_ciphers": 2,
+    "weak_dh_parameters": 1,
+    "export_cipher_offered": 0,
+    "rc4_cipher_offered": 1
+  },
+  "sessions": [
+    {
+      "session_id": "192.168.1.100:54321-93.184.216.34:443",
+      "timestamp": "2024-12-30T15:25:30",
+      "timestamp_unix": 1703952330.0,
+      "connection": {
+        "src_ip": "192.168.1.100",
+        "src_port": 54321,
+        "dst_ip": "93.184.216.34",
+        "dst_port": 443
+      },
+      "cipher_suites": {
+        "client_offered": [
+          {"id": "0x0003", "name": "TLS_RSA_EXPORT_WITH_RC4_40_MD5"},
+          {"id": "0x002F", "name": "TLS_RSA_WITH_AES_128_CBC_SHA"}
+        ],
+        "server_selected": {
+          "id": "0x0003",
+          "name": "TLS_RSA_EXPORT_WITH_RC4_40_MD5"
+        }
+      },
+      "diffie_hellman": {
+        "supported_groups": [23, 24, 25],
+        "named_groups": ["unknown_23", "unknown_24", "unknown_25"],
+        "prime_size_bits": null
+      },
+      "vulnerabilities": ["EXPORT_GRADE_CIPHER"],
+      "is_vulnerable": true
+    }
+  ]
+}
+```
+
+## Vulnerability Definitions
+
+### Export-Grade Ciphers
+Export-grade cryptography was intentionally weakened (40-56 bit keys) to comply with 1990s US export restrictions. These ciphers are trivially breakable today.
+
+**Cipher IDs**: 0x0003, 0x0006, 0x0008, 0x000B, 0x000E, 0x0011, 0x0014, 0x0017, 0x0019, 0x0026, 0x0027, 0x0028, 0x0029, 0x002A, 0x002B, 0x0062, 0x0063, 0x0064, 0x0065, 0x0066
+
+**Vulnerability Types**:
+- `EXPORT_GRADE_CIPHER`: Server selected an export cipher
+- `EXPORT_CIPHER_OFFERED`: Client offered export ciphers (even if not selected)
+
+### RC4 Ciphers
+RC4 is a stream cipher with well-documented biases that enable practical attacks. Deprecated by RFC 7465 in 2015.
+
+**Cipher IDs**: 0x0003, 0x0004, 0x0005, 0x0017, 0x0018, 0x0020, 0x0024, 0x0028, 0x002F, 0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038, 0x0039, 0x003A, 0x003B, 0x008A, 0x008B, 0x00A6, 0x00A7, 0x00C002, 0x00C007, 0x00C00C, 0x00C011, 0x00C016, 0x00C01B, 0x00C020, 0x00C025, 0x00C02A, 0x00C02F, 0x00C034, 0x00C039
+
+**Vulnerability Types**:
+- `RC4_CIPHER`: Server selected an RC4 cipher
+- `RC4_CIPHER_OFFERED`: Client offered RC4 ciphers (even if not selected)
+
+### Weak Diffie-Hellman
+DH groups with primes under 1024 bits are vulnerable to pre-computation attacks and should not be used.
+
+**Vulnerability Type**:
+- `WEAK_DH_PARAMETERS`: DH prime size < 1024 bits
+
+## Hints
+
+- Use `tshark -Y "tls.handshake.type"` to filter TLS handshake packets
+- TLS handshake types: 1=ClientHello, 2=ServerHello
+- Export cipher suites typically have "EXP" in their name and small key sizes
+- RC4 cipher suites have identifiable cipher IDs (0x0004, 0x0005, etc.)
+- DH prime size under 1024 bits is considered cryptographically weak
+- Scapy TLS layers: TLSClientHello, TLSServerHello
+- Consider offering both tshark and scapy as analysis backends for flexibility
+
+## Usage Example
+
+```bash
+# Basic usage
+python3 tls_security_analyzer.py capture.pcap
+
+# Save to file
+python3 tls_security_analyzer.py capture.pcap --output report.json
+
+# Specify method
+python3 tls_security_analyzer.py capture.pcap --method tshark
+python3 tls_security_analyzer.py capture.pcap --method scapy
+
+# Verbose output
+python3 tls_security_analyzer.py capture.pcap -v
+```
+
+## Testing
+
+Test pcap files are provided in `test_captures/`:
+- `vulnerable_tls.pcap` - Contains export-grade, RC4, and weak DH sessions
+- `secure_tls.pcap` - Contains only modern secure TLS 1.3 sessions
+- `mixed_tls.pcap` - Mix of vulnerable and secure sessions
+
+You can generate these test files by running:
+```bash
+python3 generate_test_pcaps.py
+```
+
+## References
+
+- [RFC 7465 - Prohibiting RC4 Cipher Suites](https://tools.ietf.org/html/rfc7465)
+- [RFC 7919 - Negotiated Finite Field Diffie-Hellman](https://tools.ietf.org/html/rfc7919)
+- [FREAK Attack (CVE-2015-0204)](https://freakattack.com/)
+- [Logjam Attack](https://weakdh.org/)
+

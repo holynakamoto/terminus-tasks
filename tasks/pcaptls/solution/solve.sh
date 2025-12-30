@@ -1,0 +1,241 @@
+#!/bin/bash
+
+# Solution script for TLS Security Analyzer task
+# This script generates test pcap files and runs the analyzer
+
+set -e
+
+echo "=== TLS Security Analyzer Solution ==="
+echo
+
+# Workaround for debug environment - copy from mounted location if available
+# In real Harbor environment, files are copied to /app by Harbor from [task.files]
+if [ ! -f "tls_security_analyzer.py" ]; then
+    if [ -f "/task_source/tls_security_analyzer.py" ]; then
+        echo "Copying tls_security_analyzer.py from /task_source (debug environment workaround)..."
+        cp /task_source/tls_security_analyzer.py /app/
+    else
+        echo "Error: tls_security_analyzer.py not found in /app or /task_source" >&2
+        echo "This file should be copied by Harbor from [task.files] in task.toml" >&2
+        exit 1
+    fi
+fi
+
+# Make sure it's executable (ignore errors if file is read-only)
+chmod +x tls_security_analyzer.py 2>/dev/null || true
+
+# Generate test pcap files - always regenerate for testing
+echo "Generating test pcap files..."
+rm -rf test_captures  # Force regeneration
+python3 << 'EOFPYTHON'
+#!/usr/bin/env python3
+"""
+Generate test pcap files for TLS Security Analyzer
+Creates synthetic TLS handshake captures with various security configurations
+"""
+
+import os
+from scapy.all import *
+
+def create_test_captures():
+    """Generate test pcap files with different TLS configurations"""
+    import struct
+
+    os.makedirs("test_captures", exist_ok=True)
+
+    print("Generating test pcap files...")
+    print()
+
+    def make_client_hello(version, ciphers):
+        """Build a properly formatted ClientHello with correct lengths"""
+        # Build handshake body
+        body = struct.pack('>H', version)  # Version
+        body += b'\x00' * 32  # Random
+        body += b'\x00'  # Session ID length
+        body += struct.pack('>H', len(ciphers) * 2)  # Cipher suites length
+        for c in ciphers:
+            body += struct.pack('>H', c)  # Each cipher suite
+        body += b'\x01\x00'  # Compression methods (1 method: null)
+
+        # Build handshake message
+        handshake = b'\x01'  # ClientHello type
+        handshake += struct.pack('>I', len(body))[1:]  # Length (3 bytes)
+        handshake += body
+
+        # Build TLS record
+        record = b'\x16'  # Content type: Handshake
+        record += struct.pack('>H', version)  # Version
+        record += struct.pack('>H', len(handshake))  # Length
+        record += handshake
+
+        return record
+
+    def make_server_hello(version, cipher):
+        """Build a properly formatted ServerHello with correct lengths"""
+        # Build handshake body
+        body = struct.pack('>H', version)  # Version
+        body += b'\x00' * 32  # Random
+        body += b'\x00'  # Session ID length
+        body += struct.pack('>H', cipher)  # Selected cipher
+        body += b'\x00'  # Compression method
+
+        # Build handshake message
+        handshake = b'\x02'  # ServerHello type
+        handshake += struct.pack('>I', len(body))[1:]  # Length (3 bytes)
+        handshake += body
+
+        # Build TLS record
+        record = b'\x16'  # Content type: Handshake
+        record += struct.pack('>H', version)  # Version
+        record += struct.pack('>H', len(handshake))  # Length
+        record += handshake
+
+        return record
+
+    # 1. Vulnerable session with export cipher
+    print("Generating vulnerable_tls.pcap...")
+
+    try:
+        vulnerable_packets = []
+
+        # Session 1: Export cipher (0x0003)
+        ch1_data = make_client_hello(0x0301, [0x0003, 0x0005])  # TLS 1.0
+        vulnerable_packets.append(Ether()/IP(src="192.168.1.100", dst="93.184.216.34")/TCP(sport=12345, dport=443, flags="PA")/Raw(load=ch1_data))
+
+        sh1_data = make_server_hello(0x0301, 0x0003)  # Export cipher
+        vulnerable_packets.append(Ether()/IP(src="93.184.216.34", dst="192.168.1.100")/TCP(sport=443, dport=12345, flags="PA")/Raw(load=sh1_data))
+
+        # Session 2: RC4 cipher (0x0005)
+        ch2_data = make_client_hello(0x0301, [0x0005, 0x002f])  # TLS 1.0
+        vulnerable_packets.append(Ether()/IP(src="192.168.1.101", dst="172.217.14.206")/TCP(sport=12346, dport=443, flags="PA")/Raw(load=ch2_data))
+
+        sh2_data = make_server_hello(0x0301, 0x0005)  # RC4 cipher
+        vulnerable_packets.append(Ether()/IP(src="172.217.14.206", dst="192.168.1.101")/TCP(sport=443, dport=12346, flags="PA")/Raw(load=sh2_data))
+        
+        # Verify all packets have Raw layers
+        for i, p in enumerate(vulnerable_packets):
+            if not p.haslayer(Raw):
+                print(f"  ERROR: Packet {i} missing Raw layer!", file=sys.stderr)
+            else:
+                raw_len = len(p[Raw].load)
+                first_byte = p[Raw].load[0] if len(p[Raw].load) > 0 else 0
+                hs_type = p[Raw].load[5] if len(p[Raw].load) > 5 else 0
+                hs_name = {1: 'ClientHello', 2: 'ServerHello'}.get(hs_type, 'Unknown')
+                print(f"  DEBUG: Packet {i}: Raw len={raw_len}, first=0x{first_byte:02x}, hs_type={hs_type} ({hs_name})", file=sys.stderr)
+        
+        wrpcap("test_captures/vulnerable_tls.pcap", vulnerable_packets)
+        print("  ✓ Created vulnerable_tls.pcap with export and RC4 ciphers")
+        print()
+        
+    except Exception as e:
+        print(f"  Error creating vulnerable pcap: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+    
+    # 2. Secure session
+    print("Generating secure_tls.pcap...")
+    try:
+        secure_packets = []
+
+        # TLS 1.3 session with secure ciphers
+        ch3_data = make_client_hello(0x0303, [0x1301, 0x1302, 0x1303])  # TLS 1.2 (1.3 uses 1.2 in record)
+        secure_packets.append(Ether()/IP(src="192.168.1.200", dst="1.1.1.1")/TCP(sport=54321, dport=443, flags="PA")/Raw(load=ch3_data))
+
+        sh3_data = make_server_hello(0x0303, 0x1301)  # TLS_AES_128_GCM_SHA256
+        secure_packets.append(Ether()/IP(src="1.1.1.1", dst="192.168.1.200")/TCP(sport=443, dport=54321, flags="PA")/Raw(load=sh3_data))
+
+        wrpcap("test_captures/secure_tls.pcap", secure_packets)
+        print("  ✓ Created secure_tls.pcap with TLS 1.3 ciphers")
+        print()
+        
+    except Exception as e:
+        print(f"  Error creating secure pcap: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+    
+    # 3. Mixed - include complete sessions (ClientHello + ServerHello for each)
+    print("Generating mixed_tls.pcap...")
+    try:
+        # Include one vulnerable session (RC4) and one secure session, both complete
+        # vulnerable_packets[2] = ClientHello RC4, vulnerable_packets[3] = ServerHello RC4
+        # secure_packets[0] = ClientHello secure, secure_packets[1] = ServerHello secure
+        mixed_packets = [vulnerable_packets[2], vulnerable_packets[3], secure_packets[0], secure_packets[1]]
+        wrpcap("test_captures/mixed_tls.pcap", mixed_packets)
+        print("  ✓ Created mixed_tls.pcap with complete sessions")
+        print()
+    except Exception as e:
+        print(f"  Error creating mixed pcap: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+    
+    # Verify packets by reading back
+    print("\n  Verifying pcap by reading back...", file=sys.stderr)
+    verify_packets = rdpcap("test_captures/vulnerable_tls.pcap")
+    print(f"  Read back {len(verify_packets)} packets", file=sys.stderr)
+    for i, p in enumerate(verify_packets):
+        has_raw = p.haslayer(Raw)
+        print(f"  Packet {i}: Has Raw = {has_raw}", file=sys.stderr)
+        if has_raw:
+            raw_data = p[Raw].load
+            if len(raw_data) >= 6:
+                hs_type = raw_data[5]
+                hs_name = {1: 'ClientHello', 2: 'ServerHello'}.get(hs_type, 'Unknown')
+                print(f"    Handshake: {hs_type} ({hs_name})", file=sys.stderr)
+    
+    print("Test pcap files generated successfully!")
+
+if __name__ == "__main__":
+    create_test_captures()
+EOFPYTHON
+echo
+
+# Run analyzer on vulnerable pcap
+echo "Analyzing vulnerable_tls.pcap..."
+python3 tls_security_analyzer.py test_captures/vulnerable_tls.pcap -o report.json -v
+echo
+
+# Run analyzer on secure pcap
+echo "Analyzing secure_tls.pcap..."
+python3 tls_security_analyzer.py test_captures/secure_tls.pcap -o secure_report.json -v
+echo
+
+# Run analyzer on mixed pcap
+echo "Analyzing mixed_tls.pcap..."
+python3 tls_security_analyzer.py test_captures/mixed_tls.pcap -o mixed_report.json -v
+echo
+
+echo "=== Analysis Complete ==="
+echo "Reports generated:"
+echo "  - report.json (vulnerable sessions)"
+echo "  - secure_report.json (secure sessions)"
+echo "  - mixed_report.json (mixed sessions)"
+echo
+
+# Debug: Show report.json structure
+echo "=== DEBUG: Report structure ==="
+python3 << 'EOF'
+import json
+try:
+    report = json.load(open('report.json'))
+    print(f"Total sessions: {len(report['sessions'])}")
+    for i, s in enumerate(report['sessions']):
+        print(f"\nSession {i}: {s['session_id']}")
+        print(f"  Connection: {s['connection']['src_ip']}:{s['connection']['src_port']} -> {s['connection']['dst_ip']}:{s['connection']['dst_port']}")
+        print(f"  Client ciphers: {len(s['cipher_suites']['client_offered'])}")
+        for c in s['cipher_suites']['client_offered']:
+            print(f"    - {c['id']}: {c['name']}")
+        selected = s['cipher_suites']['server_selected']
+        if selected:
+            print(f"  Server cipher: {selected['id']}: {selected['name']}")
+        else:
+            print(f"  Server cipher: None")
+        print(f"  Vulnerabilities: {s['vulnerabilities']}")
+except Exception as e:
+    print(f"Error reading report: {e}")
+    import traceback
+    traceback.print_exc()
+EOF
+echo

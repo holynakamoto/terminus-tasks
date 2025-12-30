@@ -44,9 +44,9 @@ if portkey_headers:
             break
     else:
         # If no header parameter found, print a warning but continue
-        print(f"Warning: OpenHands SDK doesn't appear to support headers directly.")
+        print("Warning: OpenHands SDK doesn't appear to support headers directly.")
         print(f"Portkey headers: {portkey_headers}")
-        print(f"You may need to configure headers via ANTHROPIC_HEADERS environment variable.")
+        print("You may need to configure headers via ANTHROPIC_HEADERS environment variable.")
 
 llm = LLM(**llm_kwargs)
 
