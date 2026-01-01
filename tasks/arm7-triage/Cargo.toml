@@ -1,0 +1,12 @@
+[package]
+name = "sample-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sample-cli"
+path = "src/main.rs"
+
+[dependencies]
+libz-sys = "1"
+openssl = { version = "0.10", features = ["vendored"] }

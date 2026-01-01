@@ -139,27 +139,24 @@ DH groups with primes under 1024 bits are vulnerable to pre-computation attacks 
 python3 tls_security_analyzer.py capture.pcap
 
 # Save to file
-python3 tls_security_analyzer.py capture.pcap -o report.json
+python3 tls_security_analyzer.py capture.pcap --output report.json
 
 # Specify method (tshark or scapy backend)
-python3 tls_security_analyzer.py capture.pcap -m tshark
-python3 tls_security_analyzer.py capture.pcap -m scapy
+python3 tls_security_analyzer.py capture.pcap --method tshark
+python3 tls_security_analyzer.py capture.pcap --method scapy
 
 # Verbose output
-python3 tls_security_analyzer.py capture.pcap -v
+python3 tls_security_analyzer.py capture.pcap --verbose
 ```
 
 ## Testing
 
-Test pcap files are provided in `test_captures/`:
-- `vulnerable_tls.pcap` - Contains export-grade, RC4, and weak DH sessions
-- `secure_tls.pcap` - Contains only modern secure TLS 1.3 sessions
-- `mixed_tls.pcap` - Mix of vulnerable and secure sessions
-
-You can generate these test files by running:
-```bash
-python3 generate_test_pcaps.py
-```
+Test pcap files are generated in `test_captures/` with numbered filenames (`capture_1.pcap`, `capture_2.pcap`, etc.). These files contain various TLS session configurations to test different aspects of your analyzer:
+- Detecting when vulnerabilities are offered vs. selected
+- Handling multiple types of vulnerable ciphers (export-grade, RC4)
+- Proper backend selection (tshark vs. scapy)
+- DH parameter extraction and analysis
+- Distinguishing secure vs. vulnerable sessions
 
 ## References
 
@@ -168,3 +165,5 @@ python3 generate_test_pcaps.py
 - [FREAK Attack (CVE-2015-0204)](https://freakattack.com/)
 - [Logjam Attack](https://weakdh.org/)
 
+
+<!-- Updated 1767285257 -->

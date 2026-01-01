@@ -1,0 +1,12 @@
+[package]
+name = "sample-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sample-cli"
+path = "src/main.rs"
+
+[dependencies]
+flate2 = { version = "1.0", default-features = false, features = ["zlib"] }
+

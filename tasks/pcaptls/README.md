@@ -46,7 +46,7 @@ python3 tls_security_analyzer.py capture.pcap --method tshark
 python3 tls_security_analyzer.py capture.pcap --method scapy
 
 # Verbose output
-python3 tls_security_analyzer.py capture.pcap -v
+python3 tls_security_analyzer.py capture.pcap --verbose
 ```
 
 ### Example Output
@@ -155,19 +155,14 @@ packets = rdpcap('capture.pcap')
 The script includes comprehensive test coverage for various TLS scenarios:
 
 - Vulnerable sessions (export-grade, RC4, weak DH)
-- Secure modern TLS 1.3 sessions  
+- Secure modern TLS 1.3 sessions
 - Mixed environments
 
-Test pcap files can be generated using:
-
-```bash
-python3 generate_test_pcaps.py
-```
-
-This creates:
-- `test_captures/vulnerable_tls.pcap` - Contains vulnerable sessions
-- `test_captures/secure_tls.pcap` - Contains only secure sessions
-- `test_captures/mixed_tls.pcap` - Mix of vulnerable and secure
+Test pcap files are generated in `test_captures/` with numbered filenames to ensure unbiased analysis. The test suite validates:
+- Vulnerability detection accuracy
+- Session metadata extraction
+- Cipher suite identification
+- Backend compatibility (tshark and scapy)
 
 ## References
 

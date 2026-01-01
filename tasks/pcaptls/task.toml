@@ -1,18 +1,15 @@
 version = "1.0"
 
 [metadata]
+author_name = "Snorkel Team"
+author_email = "tasks@snorkel.ai"
+difficulty = "medium"
+category = "security"
+tags = ["tls", "security", "pcap", "networking", "cryptography"]
 
 [task]
 name = "tls-security-analyzer"
 description = "Analyze TLS traffic captures for cryptographic vulnerabilities"
-
-[task.files]
-# Files to copy into the container at /app
-files = [
-    "tls_security_analyzer.py",
-    "instruction.md",
-    "README.md",
-]
 
 [task.oracle]
 solution = "solution/solve.sh"
@@ -27,6 +24,7 @@ timeout_sec = 900.0
 timeout_sec = 900.0
 
 [environment]
+type = "docker"
 build_timeout_sec = 600.0
 cpus = 1
 memory_mb = 4096
