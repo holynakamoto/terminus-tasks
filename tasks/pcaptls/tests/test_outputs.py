@@ -157,3 +157,24 @@ def test_cipher_suite_naming():
             assert "id" in selected, "Missing selected cipher ID"
             assert "name" in selected, "Missing selected cipher name"
             assert selected["id"].startswith("0x"), "Selected cipher ID should be hex"
+
+
+def test_anti_hardcoding():
+    """Verify analyzer actually parses pcaps (anti-cheating canary)."""
+    report_file = Path("report.json")
+    assert report_file.exists(), "report.json not found"
+    
+    with open(report_file) as f:
+        report = json.load(f)
+    
+    # Canary: Verify specific IPs from dynamically generated pcaps
+    # These IPs are hardcoded in solve.sh's pcap generation
+    sessions = report["sessions"]
+    assert len(sessions) > 0, "No sessions found"
+    
+    # Check that at least one session has expected source IPs from generated pcaps
+    found_ips = {s["connection"]["src_ip"] for s in sessions}
+    expected_ips = {"192.168.1.100", "192.168.1.101"}  # From capture_1.pcap
+    
+    assert any(ip in found_ips for ip in expected_ips), \
+        f"Expected IPs {expected_ips} not found in {found_ips}. Analyzer may be hardcoded."
