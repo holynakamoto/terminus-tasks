@@ -1,0 +1,9 @@
+[package]
+name = "sample-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sample-cli"
+path = "src/main.rs"
+

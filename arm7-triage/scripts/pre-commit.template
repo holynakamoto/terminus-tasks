@@ -1,0 +1,22 @@
+#!/bin/bash
+# Terminus-2 Task Quality Guidelines Pre-commit Hook
+#
+# To install this hook:
+#   cp scripts/pre-commit.template .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+
+echo "🔍 Checking Terminus-2 task guidelines..."
+
+# Get the directory where this script is located
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# Run validation
+python3 "$REPO_ROOT/scripts/validate_task.py" "$REPO_ROOT" || {
+    echo ""
+    echo "💡 Tip: Review guidelines at .zed/prompts/terminus_guidelines.md"
+    echo "💡 Or run: cat .zed/prompts/terminus_guidelines.md"
+    exit 1
+}
+
+echo "✅ Pre-commit validation passed!"
