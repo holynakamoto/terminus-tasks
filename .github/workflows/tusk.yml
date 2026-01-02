@@ -1,42 +1,46 @@
-name: Tusk Tests
+name: Tusk Test Runner
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       runId:
-        description: 'The ID of the workflow run'
+        description: "Tusk Run ID"
         required: true
         type: string
       tuskUrl:
-        description: 'The URL for Tusk'
+        description: "Tusk server URL"
         required: true
         type: string
       commitSha:
-        description: 'The commit SHA'
+        description: "Commit SHA to checkout"
         required: true
         type: string
 
 jobs:
-  tusk:
+  test-action:
+    name: Tusk Test Runner
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout
+        id: checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.commitSha || github.sha }}
+          ref: ${{ github.event.inputs.commitSha }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Run Tusk
-        uses: usetusk/tusk-action@v1
+      - name: Start runner
+        id: test-action
+        uses: Use-Tusk/test-runner@v1
         with:
-          api-key: ${{ secrets.TUSK_API_KEY }}
-          run-id: ${{ github.event.inputs.runId }}
-          tusk-url: ${{ github.event.inputs.tuskUrl }}
-          commit-sha: ${{ github.event.inputs.commitSha || github.sha }}
-
+          runId: ${{ github.event.inputs.runId }}
+          tuskUrl: ${{ github.event.inputs.tuskUrl }}
+          commitSha: ${{ github.event.inputs.commitSha }}
+          authToken: ${{ secrets.TUSK_AUTH_TOKEN }}
+          testFramework: "pytest"
+          testFileRegex: "^tasks/.*/tests/.*test.*\\.py$"
+          testScript: "pytest {{file}}"
