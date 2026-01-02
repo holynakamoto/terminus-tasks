@@ -20,6 +20,8 @@ jobs:
   test-action:
     name: Tusk Test Runner
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
