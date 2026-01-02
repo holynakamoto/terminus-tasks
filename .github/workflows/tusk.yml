@@ -40,6 +40,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest
 
+      - name: Create test runner script
+        run: |
+          cat > /tmp/run_test.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          FILE="$1"
+          if [[ "$FILE" == *.sh ]]; then
+            bash "$FILE"
+          elif [[ "$FILE" == *.py ]]; then
+            pytest "$FILE" -vv
+          else
+            echo "Unknown file type: $FILE"
+            exit 1
+          fi
+          EOF
+          chmod +x /tmp/run_test.sh
+
       - name: Start runner
         id: test-action
         uses: Use-Tusk/test-runner@v1
@@ -48,6 +65,6 @@ jobs:
           tuskUrl: ${{ github.event.inputs.tuskUrl }}
           commitSha: ${{ github.event.inputs.commitSha }}
           authToken: ${{ secrets.TUSK_AUTH_TOKEN }}
-          testFramework: "pytest"
+          testFramework: "custom"
           testFileRegex: "^tasks/.*/tests/test.*$"
-          testScript: "pytest {{file}}"
+          testScript: "/tmp/run_test.sh {{file}}"
