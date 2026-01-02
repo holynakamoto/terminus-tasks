@@ -1,6 +1,8 @@
 """
 Test suite for TLS Security Analyzer.
 
+CANARY_STRING_PLACEHOLDER
+
 This file verifies that the analyzer correctly:
 - Produces valid JSON output
 - Detects export-grade ciphers
@@ -16,7 +18,14 @@ from pathlib import Path
 
 
 def test_basic_functionality():
-    """Test script runs and produces valid JSON output."""
+    """Verify the analyzer script executes successfully and produces valid JSON output with required structure.
+    
+    This test ensures the analyzer can be invoked, completes without errors, and generates
+    a report.json file containing the expected top-level fields: analysis_metadata,
+    vulnerability_summary, and sessions. It validates that metadata includes total_sessions,
+    vulnerable_sessions, and timestamp fields, and that the vulnerability summary includes
+    export_grade_ciphers, rc4_ciphers, and weak_dh_parameters counters.
+    """
     report_file = Path("report.json")
     assert report_file.exists(), "report.json not found"
     
@@ -40,7 +49,13 @@ def test_basic_functionality():
 
 
 def test_vulnerable_detection_export():
-    """Detect export-grade cipher usage."""
+    """Verify the analyzer correctly identifies and flags export-grade cipher suites in TLS sessions.
+    
+    Export-grade ciphers are legacy weak ciphers that were intentionally weakened for export
+    compliance. This test validates that the analyzer detects when export-grade ciphers are
+    selected by the server, increments the export_grade_ciphers counter in the summary, and
+    marks affected sessions with the EXPORT_GRADE_CIPHER vulnerability flag.
+    """
     report_file = Path("report.json")
     assert report_file.exists(), "report.json not found"
     
@@ -59,7 +74,13 @@ def test_vulnerable_detection_export():
 
 
 def test_vulnerable_detection_rc4():
-    """Detect RC4 cipher usage."""
+    """Verify the analyzer correctly identifies and flags RC4 cipher suite usage in TLS sessions.
+    
+    RC4 is a stream cipher that has been deprecated due to cryptographic weaknesses. This test
+    validates that the analyzer detects when RC4 ciphers are selected by the server, increments
+    the rc4_ciphers counter in the vulnerability summary, and marks affected sessions with
+    the RC4_CIPHER vulnerability flag.
+    """
     report_file = Path("report.json")
     assert report_file.exists(), "report.json not found"
     
@@ -78,7 +99,13 @@ def test_vulnerable_detection_rc4():
 
 
 def test_weak_dh_detection():
-    """Detect weak Diffie-Hellman parameters."""
+    """Verify the analyzer correctly identifies weak Diffie-Hellman (DH) parameters in TLS key exchange.
+    
+    Weak DH parameters (typically prime sizes < 1024 bits) are vulnerable to cryptographic attacks.
+    This test validates that the analyzer extracts DH prime sizes from ServerKeyExchange messages,
+    maintains the weak_dh_parameters counter in the vulnerability summary, and properly flags
+    sessions with WEAK_DH_PARAMETERS when primes are below the security threshold.
+    """
     report_file = Path("report.json")
     assert report_file.exists(), "report.json not found"
     
@@ -92,7 +119,13 @@ def test_weak_dh_detection():
 
 
 def test_secure_traffic_validation():
-    """Validate secure traffic has no vulnerabilities."""
+    """Verify the analyzer correctly identifies secure TLS traffic without false positives.
+    
+    This test ensures that when analyzing pcap files containing only secure, modern TLS
+    configurations (e.g., TLS 1.3 with strong ciphers), the analyzer correctly reports zero
+    vulnerabilities. This validates that the vulnerability detection logic doesn't produce
+    false positives and can distinguish between vulnerable and secure configurations.
+    """
     report_file = Path("secure_report.json")
     if not report_file.exists():
         # Skip if secure report not generated
@@ -106,7 +139,13 @@ def test_secure_traffic_validation():
 
 
 def test_session_details():
-    """Verify session metadata is captured correctly."""
+    """Verify the analyzer captures complete session metadata including connection details and timestamps.
+    
+    This test validates that each TLS session in the report includes all required metadata fields:
+    timestamp (both ISO format and Unix epoch), connection information (source/destination IPs
+    and ports), cipher suite details, vulnerability flags, and the is_vulnerable boolean status.
+    Complete metadata is essential for security analysis and incident response workflows.
+    """
     report_file = Path("mixed_report.json")
     if not report_file.exists():
         report_file = Path("report.json")
@@ -135,7 +174,14 @@ def test_session_details():
 
 
 def test_cipher_suite_naming():
-    """Verify cipher suites are properly named."""
+    """Verify the analyzer provides both hexadecimal IDs and human-readable names for cipher suites.
+    
+    This test ensures that all cipher suites in the report (both client-offered and server-selected)
+    include both the hexadecimal identifier (e.g., "0x0003") and a descriptive name (e.g.,
+    "TLS_RSA_EXPORT_WITH_RC4_40_MD5"). Proper naming improves readability and helps security
+    analysts quickly understand the cryptographic configuration without needing to look up
+    cipher suite codes manually.
+    """
     report_file = Path("report.json")
     assert report_file.exists(), "report.json not found"
     
@@ -160,7 +206,14 @@ def test_cipher_suite_naming():
 
 
 def test_anti_hardcoding():
-    """Verify analyzer actually parses pcaps (anti-cheating canary)."""
+    """Verify the analyzer actually parses pcap files rather than using hardcoded responses.
+    
+    This anti-cheating test validates that the analyzer extracts connection information (specifically
+    source IP addresses) from the actual pcap file contents. It checks for specific IP addresses
+    that are dynamically generated in the test pcap files, ensuring the analyzer is performing
+    real packet parsing rather than returning pre-computed or hardcoded results. This prevents
+    solutions that bypass the actual analysis work.
+    """
     report_file = Path("report.json")
     assert report_file.exists(), "report.json not found"
     

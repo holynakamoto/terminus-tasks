@@ -1,7 +1,11 @@
 FROM ubuntu:24.04
 
-# Cache buster - forces rebuild when instruction.md changes
-ARG CACHE_BUST=1
+# Self-busting cache: COPY this file to invalidate cache when cache_bust.txt changes
+# To force a rebuild, increment the number in cache_bust.txt and commit
+COPY cache_bust.txt /tmp/cache_bust.txt
+
+# Canary hook retained for external systems to rewrite if needed
+# CANARY_STRING_PLACEHOLDER
 
 # Install system dependencies
 RUN apt-get update && \

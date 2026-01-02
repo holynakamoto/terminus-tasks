@@ -15,21 +15,35 @@ fi
 
 # Ensure log directory exists
 mkdir -p /logs/verifier
+if [ ! -w /logs/verifier ]; then
+  echo "Error: /logs/verifier is not writable" >&2
+  exit 1
+fi
 
 # Install test dependencies
 echo "=== Installing test dependencies ==="
-apt-get update && apt-get install -y --no-install-recommends python3 python3-pip
-pip3 install --quiet pytest==8.3.4 --break-system-packages
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y --no-install-recommends python3 python3-pip
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+pip3 install --no-cache-dir --quiet --break-system-packages pytest==8.3.4
 
 echo "=== Running pytest tests ==="
+if [ ! -d /app ]; then
+  echo "Error: /app directory does not exist" >&2
+  exit 1
+fi
 cd /app
 
 # Run pytest with verbose output
 # pytest will execute all validations from test_outputs.py
 set +e
 pytest /tests/test_outputs.py -v --tb=short --color=yes -rA
+pytest_status=$?
+set -e
 
-if [ $? -eq 0 ]; then
+if [ $pytest_status -eq 0 ]; then
   echo 1 > /logs/verifier/reward.txt
 else
   echo 0 > /logs/verifier/reward.txt

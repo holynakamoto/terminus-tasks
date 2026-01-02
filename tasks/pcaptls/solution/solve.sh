@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# CANARY_STRING_PLACEHOLDER
+
 # Solution script for TLS Security Analyzer task
 # This script generates test pcap files and runs the analyzer
 

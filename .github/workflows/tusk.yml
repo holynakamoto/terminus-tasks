@@ -1,0 +1,23 @@
+name: Tusk Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  tusk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Run Tusk
+        uses: usetusk/tusk-action@v1
+        with:
+          api-key: ${{ secrets.TUSK_API_KEY }}
+
