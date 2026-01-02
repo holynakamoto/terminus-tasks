@@ -3,6 +3,20 @@ name: Tusk Tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      runId:
+        description: 'The ID of the workflow run'
+        required: true
+        type: string
+      tuskUrl:
+        description: 'The URL for Tusk'
+        required: true
+        type: string
+      commitSha:
+        description: 'The commit SHA'
+        required: true
+        type: string
 
 jobs:
   tusk:
@@ -10,6 +24,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.commitSha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -20,4 +36,7 @@ jobs:
         uses: usetusk/tusk-action@v1
         with:
           api-key: ${{ secrets.TUSK_API_KEY }}
+          run-id: ${{ github.event.inputs.runId }}
+          tusk-url: ${{ github.event.inputs.tuskUrl }}
+          commit-sha: ${{ github.event.inputs.commitSha || github.sha }}
 
