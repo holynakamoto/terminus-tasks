@@ -42,5 +42,5 @@ jobs:
           commitSha: ${{ github.event.inputs.commitSha }}
           authToken: ${{ secrets.TUSK_AUTH_TOKEN }}
           testFramework: "pytest"
-          testFileRegex: "^tasks/.*/tests/.*test.*\\.py$"
+          testFileRegex: "^tasks/.*/tests/test.*$"
           testScript: "pytest {{file}}"
