@@ -4,6 +4,10 @@ FROM ubuntu:24.04
 # To force a rebuild, increment the number in cache_bust.txt and commit
 COPY cache_bust.txt /tmp/cache_bust.txt
 
+# Cache buster - forces rebuild when passed as build arg (e.g., --build-arg CACHE_BUST=$(date +%s))
+ARG CACHE_BUST=20260102_v3
+RUN echo "CACHE_BUST=${CACHE_BUST}"
+
 # Canary hook retained for external systems to rewrite if needed
 # CANARY_STRING_PLACEHOLDER
 
