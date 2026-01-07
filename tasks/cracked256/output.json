@@ -1,0 +1,46 @@
+{
+    "behavior_in_task_description": {
+        "explanation": "Tests enforce at least one cracked password and >=50% crack rate (test_reasonable_crack_rate, test_csv_format_valid), which are not required in instruction.md. All other checked behaviors (canary first line, CSV header/format, sorting, mangling evidence) are specified.",
+        "outcome": "fail"
+    },
+    "behavior_in_tests": {
+        "explanation": "Instruction requires clustering by iteration count and specific mangling rule types (including leet). Tests only verify multiple iteration counts exist and look for generic mangling indicators (capitalization, numbers, symbols), not leet or actual clustering behavior. Absolute path requirement is also not explicitly tested.",
+        "outcome": "fail"
+    },
+    "informative_test_structure": {
+        "explanation": "Tests are organized into clear functions with descriptive names and docstrings (e.g., test_output_file_exists, test_cracked_passwords_are_valid).",
+        "outcome": "pass"
+    },
+    "anti_cheating_measures": {
+        "explanation": "Tests recompute PBKDF2 to validate cracked passwords (test_cracked_passwords_are_valid) and require a canary line. No external mutable resources are used; trivial hardcoding is discouraged.",
+        "outcome": "pass"
+    },
+    "structured_data_schema": {
+        "explanation": "instruction.md specifies exact output path and format, including the canary first line and CSV header 'username,password'.",
+        "outcome": "pass"
+    },
+    "pinned_dependencies": {
+        "explanation": "Base image pinned (python:3.11.11-slim). Test deps pinned via uvx (pytest==8.4.1, pytest-json-ctrf==0.3.5) and uv installer version (0.9.7). Apt packages need not be pinned.",
+        "outcome": "pass"
+    },
+    "typos": {
+        "explanation": "No typos found in file paths or names; canary string consistent across instruction and tests.",
+        "outcome": "pass"
+    },
+    "tests_or_solution_in_image": {
+        "explanation": "Dockerfile does not copy tests/ or solution/ into the image; only sets WORKDIR.",
+        "outcome": "pass"
+    },
+    "test_deps_in_image": {
+        "explanation": "Test dependencies (curl, uv, pytest, plugins) are installed in tests/test.sh, not baked into the image.",
+        "outcome": "pass"
+    },
+    "hardcoded_solution": {
+        "explanation": "solution/solve.sh generates data and runs a cracking process using PBKDF2 computations and mangling; it does not echo fixed answers.",
+        "outcome": "pass"
+    },
+    "file_reference_mentioned": {
+        "explanation": "instruction.md explicitly names required file paths: /app/hashes.txt, /app/dictionary.txt, /app/cracked.csv.",
+        "outcome": "pass"
+    }
+}
