@@ -1,0 +1,78 @@
+graph TB
+    subgraph "Setup Phase"
+        A[Poetry Init] --> B[Install Dependencies]
+        B --> C[langgraph, langchain-anthropic, langchain-openai]
+        C --> D[Create pyproject.toml]
+    end
+
+    subgraph "Configuration"
+        E[Configure Portkey] --> F[PORTKEY_API_KEY]
+        F --> G[ANTHROPIC_BASE_URL]
+        G --> H[ANTHROPIC_HEADERS]
+        H --> I[OpenAI-compatible Interface]
+    end
+
+    subgraph "Harbor LangGraph Integration"
+        J[graph_config.py] --> K[HarborGraph Class]
+        K --> L[Auto-detect Portkey]
+        L --> M{Portkey?}
+        M -->|Yes| N[Use ChatOpenAI]
+        M -->|No| O[Use ChatAnthropic]
+        N --> P[LangGraph StateGraph]
+        O --> P
+        P --> Q[nodes.py - Agent Logic]
+    end
+
+    subgraph "Execution Flow"
+        R[main.py] --> S[HarborRunner]
+        S --> T[Initialize Graph]
+        T --> U[Create Docker Container]
+        U --> V[Execute Episodes]
+        V --> W[Agent Commands]
+        W --> X[Docker Exec]
+        X --> Y[Collect Results]
+    end
+
+    subgraph "CLI Tools - 30+ Functions"
+        Z[harbor_langgraph.zsh]
+        Z --> Z1[hlg-run - Execute tasks]
+        Z --> Z2[hlg-jobs - View history]
+        Z --> Z3[hlg-stats - Calculate metrics]
+        Z --> Z4[hlg-result - Show outputs]
+        Z --> Z5[hlg-watch - Real-time logs]
+        Z --> Z6[hlg-clean - Cleanup]
+        Z --> Z7[hlg-test - Verify setup]
+    end
+
+    subgraph "Task Structure"
+        AA[tasks/cracked256/]
+        AA --> AB[environment/Dockerfile]
+        AA --> AC[instruction.md]
+        AA --> AD[tests/test.sh]
+        AA --> AE[jobs/TIMESTAMP/]
+        AE --> AF[trajectory.json]
+        AE --> AG[result.json]
+        AE --> AH[state.json]
+    end
+
+    subgraph "Fixes Applied"
+        BA[Issue: Python Detection] --> BB[Solution: Poetry wrapper]
+        CA[Issue: 404 from Portkey] --> CB[Solution: OpenAI interface]
+        DA[Issue: Container exits] --> DB[Solution: CMD tail -f]
+        EA[Issue: Recursion limit] --> EB[Solution: Set to 100]
+    end
+
+    D --> J
+    I --> L
+    Q --> S
+    Z --> R
+    AB --> U
+    AF --> Z2
+
+    style A fill:#e1f5ff
+    style E fill:#fff4e1
+    style J fill:#e8f5e9
+    style R fill:#f3e5f5
+    style Z fill:#fce4ec
+    style AA fill:#fff9c4
+    style BA fill:#ffebee

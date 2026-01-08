@@ -1,0 +1,10 @@
+# Test artifacts
+jobs/
+*.zip
+output.json
+
+# Tool artifacts
+.claude/
+.ruff_cache/
+__pycache__/
+*.pyc

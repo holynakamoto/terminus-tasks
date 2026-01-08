@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .mermaid {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>Harbor LangGraph Integration Architecture</h1>
+    <div class="mermaid">
+graph TB
+    subgraph "1️⃣ Setup Phase"
+        A[Poetry Init] --> B[Install Dependencies]
+        B --> C[langgraph, langchain-anthropic<br/>langchain-openai, docker, etc]
+        C --> D[pyproject.toml Created]
+    end
+
+    subgraph "2️⃣ Portkey Configuration"
+        E[Configure API] --> F[PORTKEY_API_KEY]
+        F --> G[ANTHROPIC_BASE_URL<br/>https://api.portkey.ai/v1]
+        G --> H[ANTHROPIC_HEADERS<br/>x-portkey-api-key]
+    end
+
+    subgraph "3️⃣ LangGraph Core"
+        J[graph_config.py] --> K[HarborGraph Class]
+        K --> L[Auto-detect Portkey]
+        L --> M{Portkey<br/>Detected?}
+        M -->|Yes| N[ChatOpenAI<br/>OpenAI-compatible]
+        M -->|No| O[ChatAnthropic<br/>Direct API]
+        N --> P[StateGraph with<br/>MemorySaver]
+        O --> P
+        P --> Q[nodes.py<br/>Agent Logic]
+    end
+
+    subgraph "4️⃣ Execution Pipeline"
+        R[main.py Entry] --> S[HarborRunner]
+        S --> T[Initialize Graph<br/>recursion_limit=100]
+        T --> U[Docker Container<br/>tail -f /dev/null]
+        U --> V[Execute Episodes<br/>max 10 by default]
+        V --> W[Agent Generates<br/>Bash Commands]
+        W --> X[Docker Exec]
+        X --> Y[Collect Results &<br/>Trajectories]
+    end
+
+    subgraph "5️⃣ CLI Tools - 30+ Commands"
+        Z[harbor_langgraph.zsh<br/>Loaded via ~/.zshrc]
+        Z --> Z1[hlg-run<br/>Execute tasks]
+        Z --> Z2[hlg-jobs<br/>View history]
+        Z --> Z3[hlg-stats<br/>Success rates]
+        Z --> Z4[hlg-result<br/>Show outputs]
+        Z --> Z5[hlg-watch<br/>Live monitoring]
+        Z --> Z6[hlg-clean-docker<br/>Container cleanup]
+    end
+
+    subgraph "6️⃣ Task Structure"
+        AA[tasks/cracked256/]
+        AA --> AB[environment/<br/>Dockerfile]
+        AA --> AC[instruction.md<br/>Task Description]
+        AA --> AD[tests/test.sh<br/>Verification]
+        AA --> AE[jobs/2026-01-08__10-30-24/]
+        AE --> AF[trajectory.json<br/>All episodes]
+        AE --> AG[result.json<br/>Final outcome]
+        AE --> AH[state.json<br/>Graph state]
+    end
+
+    subgraph "🔧 Key Fixes"
+        BA[Python Detection] --> BB[Poetry run wrapper]
+        CA[404 from Portkey] --> CB[Use OpenAI interface]
+        DA[Container exits] --> DB[Add CMD tail -f]
+        EA[Recursion limit 25] --> EB[Increase to 100]
+    end
+
+    D --> J
+    H --> L
+    Q --> S
+    Z --> R
+    AB --> U
+    AF --> Z2
+
+    style A fill:#e1f5ff
+    style E fill:#fff4e1
+    style J fill:#e8f5e9
+    style R fill:#f3e5f5
+    style Z fill:#fce4ec
+    style AA fill:#fff9c4
+    style BA fill:#ffebee
+    style BB fill:#c8e6c9
+    style CB fill:#c8e6c9
+    style DB fill:#c8e6c9
+    style EB fill:#c8e6c9
+    </div>
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+</body>
+</html>

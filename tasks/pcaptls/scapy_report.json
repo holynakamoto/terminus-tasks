@@ -1,0 +1,91 @@
+{
+  "analysis_metadata": {
+    "timestamp": "2026-01-06T16:33:24.224962",
+    "total_sessions": 2,
+    "vulnerable_sessions": 2
+  },
+  "vulnerability_summary": {
+    "export_grade_ciphers": 1,
+    "rc4_ciphers": 1,
+    "weak_dh_parameters": 0,
+    "export_cipher_offered": 1,
+    "rc4_cipher_offered": 2
+  },
+  "sessions": [
+    {
+      "session_id": "192.168.1.100:12345-93.184.216.34:443",
+      "timestamp": "2026-01-06T16:23:45.104012",
+      "timestamp_unix": 1767741825.104012,
+      "connection": {
+        "src_ip": "192.168.1.100",
+        "src_port": 12345,
+        "dst_ip": "93.184.216.34",
+        "dst_port": 443
+      },
+      "cipher_suites": {
+        "client_offered": [
+          {
+            "id": "0x0003",
+            "name": "UNKNOWN"
+          },
+          {
+            "id": "0x0005",
+            "name": "TLS_RSA_WITH_RC4_128_SHA"
+          }
+        ],
+        "server_selected": {
+          "id": "0x0003",
+          "name": "UNKNOWN"
+        }
+      },
+      "diffie_hellman": {
+        "supported_groups": [],
+        "named_groups": [],
+        "prime_size_bits": null
+      },
+      "vulnerabilities": [
+        "EXPORT_GRADE_CIPHER",
+        "EXPORT_CIPHER_OFFERED",
+        "RC4_CIPHER_OFFERED"
+      ],
+      "is_vulnerable": true
+    },
+    {
+      "session_id": "192.168.1.101:12346-172.217.14.206:443",
+      "timestamp": "2026-01-06T16:23:45.104520",
+      "timestamp_unix": 1767741825.10452,
+      "connection": {
+        "src_ip": "192.168.1.101",
+        "src_port": 12346,
+        "dst_ip": "172.217.14.206",
+        "dst_port": 443
+      },
+      "cipher_suites": {
+        "client_offered": [
+          {
+            "id": "0x0005",
+            "name": "TLS_RSA_WITH_RC4_128_SHA"
+          },
+          {
+            "id": "0x002F",
+            "name": "TLS_RSA_WITH_AES_128_CBC_SHA"
+          }
+        ],
+        "server_selected": {
+          "id": "0x0005",
+          "name": "TLS_RSA_WITH_RC4_128_SHA"
+        }
+      },
+      "diffie_hellman": {
+        "supported_groups": [],
+        "named_groups": [],
+        "prime_size_bits": null
+      },
+      "vulnerabilities": [
+        "RC4_CIPHER",
+        "RC4_CIPHER_OFFERED"
+      ],
+      "is_vulnerable": true
+    }
+  ]
+}

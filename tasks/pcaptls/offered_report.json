@@ -1,0 +1,56 @@
+{
+  "analysis_metadata": {
+    "timestamp": "2026-01-06T16:33:22.718777",
+    "total_sessions": 1,
+    "vulnerable_sessions": 1
+  },
+  "vulnerability_summary": {
+    "export_grade_ciphers": 0,
+    "rc4_ciphers": 0,
+    "weak_dh_parameters": 0,
+    "export_cipher_offered": 1,
+    "rc4_cipher_offered": 0
+  },
+  "sessions": [
+    {
+      "session_id": "192.168.1.150:55555-1.1.1.1:443",
+      "timestamp": "2026-01-06T16:23:45.119378",
+      "timestamp_unix": 1767741825.119378,
+      "connection": {
+        "src_ip": "192.168.1.150",
+        "src_port": 55555,
+        "dst_ip": "1.1.1.1",
+        "dst_port": 443
+      },
+      "cipher_suites": {
+        "client_offered": [
+          {
+            "id": "0x0003",
+            "name": "UNKNOWN"
+          },
+          {
+            "id": "0x1301",
+            "name": "TLS_AES_128_GCM_SHA256"
+          },
+          {
+            "id": "0x1302",
+            "name": "TLS_AES_256_GCM_SHA384"
+          }
+        ],
+        "server_selected": {
+          "id": "0x1301",
+          "name": "TLS_AES_128_GCM_SHA256"
+        }
+      },
+      "diffie_hellman": {
+        "supported_groups": [],
+        "named_groups": [],
+        "prime_size_bits": null
+      },
+      "vulnerabilities": [
+        "EXPORT_CIPHER_OFFERED"
+      ],
+      "is_vulnerable": true
+    }
+  ]
+}

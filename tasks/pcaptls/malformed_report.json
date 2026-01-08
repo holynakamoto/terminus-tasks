@@ -1,0 +1,72 @@
+{
+  "analysis_metadata": {
+    "timestamp": "2026-01-06T16:33:25.735490",
+    "total_sessions": 2,
+    "vulnerable_sessions": 0
+  },
+  "vulnerability_summary": {
+    "export_grade_ciphers": 0,
+    "rc4_ciphers": 0,
+    "weak_dh_parameters": 0,
+    "export_cipher_offered": 0,
+    "rc4_cipher_offered": 0
+  },
+  "sessions": [
+    {
+      "session_id": "192.168.1.130:55555-1.1.1.1:443",
+      "timestamp": "2026-01-06T16:23:45.130082",
+      "timestamp_unix": 1767741825.130082,
+      "connection": {
+        "src_ip": "192.168.1.130",
+        "src_port": 55555,
+        "dst_ip": "1.1.1.1",
+        "dst_port": 443
+      },
+      "cipher_suites": {
+        "client_offered": [
+          {
+            "id": "0x1301",
+            "name": "TLS_AES_128_GCM_SHA256"
+          },
+          {
+            "id": "0x1302",
+            "name": "TLS_AES_256_GCM_SHA384"
+          }
+        ],
+        "server_selected": {
+          "id": "0x1301",
+          "name": "TLS_AES_128_GCM_SHA256"
+        }
+      },
+      "diffie_hellman": {
+        "supported_groups": [],
+        "named_groups": [],
+        "prime_size_bits": null
+      },
+      "vulnerabilities": [],
+      "is_vulnerable": false
+    },
+    {
+      "session_id": "1.1.1.1:443-192.168.1.131:55557",
+      "timestamp": "2026-01-06T16:23:45.130786",
+      "timestamp_unix": 1767741825.130786,
+      "connection": {
+        "src_ip": "1.1.1.1",
+        "src_port": 443,
+        "dst_ip": "192.168.1.131",
+        "dst_port": 55557
+      },
+      "cipher_suites": {
+        "client_offered": [],
+        "server_selected": null
+      },
+      "diffie_hellman": {
+        "supported_groups": [],
+        "named_groups": [],
+        "prime_size_bits": null
+      },
+      "vulnerabilities": [],
+      "is_vulnerable": false
+    }
+  ]
+}
