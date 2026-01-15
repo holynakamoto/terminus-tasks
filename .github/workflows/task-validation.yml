@@ -104,8 +104,9 @@ jobs:
 
       - name: Run LLMaJ Check (GPT-5)
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
+          OPENAI_BASE_URL: https://api.portkey.ai/v1
+          LITELLM_EXTRA_HEADERS: '{"x-portkey-api-key": "${{ secrets.PORTKEY_API_KEY }}", "x-portkey-virtual-key": "${{ secrets.PORTKEY_API_KEY }}"}'
         run: |
           # Create task folder for harbor check
           mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
@@ -279,8 +280,9 @@ jobs:
 
       - name: Run GPT-5 Difficulty Eval
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
+          OPENAI_BASE_URL: https://api.portkey.ai/v1
+          LITELLM_EXTRA_HEADERS: '{"x-portkey-api-key": "${{ secrets.PORTKEY_API_KEY }}", "x-portkey-virtual-key": "${{ secrets.PORTKEY_API_KEY }}"}'
         run: |
           # Run 3 times to get a better sense of difficulty (as requested)
           # We use trial count in harbor run if supported, otherwise loop
@@ -290,8 +292,9 @@ jobs:
 
       - name: Run Claude Sonnet 4.5 Difficulty Eval
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
+          OPENAI_BASE_URL: https://api.portkey.ai/v1
+          LITELLM_EXTRA_HEADERS: '{"x-portkey-api-key": "${{ secrets.PORTKEY_API_KEY }}", "x-portkey-virtual-key": "${{ secrets.PORTKEY_API_KEY }}"}'
         run: |
           for i in {1..3}; do
             harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
