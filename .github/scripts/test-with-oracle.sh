@@ -83,8 +83,7 @@ if [ -f "$TASK_DIR/environment/Dockerfile" ]; then
             echo "=== Running tests ==="
             if [ -f /tests/test.sh ]; then
                 bash /tests/test.sh
-            fi
-            if [ -f /tests/test_outputs.py ]; then
+            elif [ -f /tests/test_outputs.py ]; then
                 python3 -m pytest /tests/test_outputs.py -v
             fi
         '

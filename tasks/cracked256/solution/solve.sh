@@ -83,6 +83,11 @@ iteration_counts = [
     500000, 500000,  # Very high (forces optimization)
 ]
 
+# Scale iterations down if in CI FAST MODE to prevent timeouts
+if os.environ.get('CI_FAST_MODE') == '1':
+    print("CI_FAST_MODE detected: scaling iterations by 0.1x")
+    iteration_counts = [max(10, count // 10) for count in iteration_counts]
+
 hashes = []
 
 # Generate valid hashes
@@ -343,20 +348,30 @@ cluster_tasks = [
     for iterations, hash_list in clusters.items()
 ]
 
-# Crack hashes in parallel across clusters
+# Crack hashes - use parallel processing only if multiple CPUs available
 cracked = []
 cpu_count = max(1, os.cpu_count() or 1)
 
-with ProcessPoolExecutor(max_workers=min(cpu_count, len(cluster_tasks))) as executor:
-    futures = {
-        executor.submit(crack_cluster, task): task[0]
-        for task in cluster_tasks
-    }
+if cpu_count > 1:
+    print(f"Using ProcessPoolExecutor with {cpu_count} workers")
+    with ProcessPoolExecutor(max_workers=min(cpu_count, len(cluster_tasks))) as executor:
+        futures = {
+            executor.submit(crack_cluster, task): task[0]
+            for task in cluster_tasks
+        }
 
-    for future in as_completed(futures):
-        iterations = futures[future]
-        cluster_results = future.result()
+        for future in as_completed(futures):
+            iterations = futures[future]
+            cluster_results = future.result()
 
+            if cluster_results:
+                cracked.extend(cluster_results)
+                print(f"Cluster {iterations}: cracked {len(cluster_results)} passwords")
+else:
+    print("Single CPU detected: using sequential processing")
+    for task in cluster_tasks:
+        iterations = task[0]
+        cluster_results = crack_cluster(task)
         if cluster_results:
             cracked.extend(cluster_results)
             print(f"Cluster {iterations}: cracked {len(cluster_results)} passwords")

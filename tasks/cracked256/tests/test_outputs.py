@@ -188,8 +188,8 @@ def test_hashes_file_integrity():
         # Check if it's a valid PBKDF2 entry
         if parts[0] == 'pbkdf2_sha256' and len(parts) >= 4:
             try:
-                # Try to parse as valid PBKDF2
-                iterations_str = parts[1].replace(',', '')
+                # Try to parse as valid PBKDF2 (strict check for integrity)
+                iterations_str = parts[1]
                 int(iterations_str)
 
                 # Validate base64 components
