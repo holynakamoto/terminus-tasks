@@ -5,11 +5,14 @@ on:
     types: [opened, synchronize]
     paths:
       - 'tasks/**'
+      - '.github/workflows/task-validation.yml'
   push:
     branches:
       - 'claude/**'
+      - 'main'
     paths:
       - 'tasks/**'
+      - '.github/workflows/task-validation.yml'
   workflow_dispatch:
     inputs:
       test_type:
@@ -53,6 +56,12 @@ jobs:
 
           # Extract unique task directories from changed files
           TASKS=$(echo "$CHANGED_FILES" | grep '^tasks/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          # If only the workflow changed, default to testing cracked256 to verify CI logic
+          if ([ "$TASKS" = "[]" ] || [ -z "$TASKS" ]) && echo "$CHANGED_FILES" | grep -q 'task-validation.yml'; then
+            echo "Workflow changed, defaulting to cracked256 for validation"
+            TASKS='["cracked256"]'
+          fi
 
           echo "tasks=$TASKS" >> $GITHUB_OUTPUT
 
