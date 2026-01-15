@@ -85,8 +85,9 @@ jobs:
       - name: Install uv and dependencies
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          source $HOME/.local/bin/env
-          uv pip install --system harbor==0.1.25 ruff
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          # Use full path for the first installation since GITHUB_PATH applies to subsequent steps
+          $HOME/.local/bin/uv pip install --system harbor==0.1.25 ruff
 
       - name: Run Ruff Lint
         run: |
@@ -97,7 +98,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
         run: |
-          source $HOME/.local/bin/env
           # Create task folder for harbor check
           mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
           cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
@@ -260,8 +260,8 @@ jobs:
       - name: Install uv and harbor
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          source $HOME/.local/bin/env
-          uv pip install --system harbor==0.1.25 terminal-bench==0.2.18
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          $HOME/.local/bin/uv pip install --system harbor==0.1.25 terminal-bench==0.2.18
 
       - name: Prepare task for harbor
         run: |
@@ -273,7 +273,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
         run: |
-          source $HOME/.local/bin/env
           # Run 3 times to get a better sense of difficulty (as requested)
           # We use trial count in harbor run if supported, otherwise loop
           for i in {1..3}; do
@@ -285,7 +284,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
         run: |
-          source $HOME/.local/bin/env
           for i in {1..3}; do
             harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
           done
