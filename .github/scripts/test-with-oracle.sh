@@ -55,7 +55,12 @@ if [ -f "$TASK_DIR/environment/Dockerfile" ]; then
 
     # Run solution AND tests in the same container to preserve state
     echo "Running solution and tests in Docker container..."
-    docker run --rm \
+
+    # Set CI_FAST_MODE for faster testing (reduces iteration counts in compatible tasks)
+    # Timeout: 15 minutes (900s) to match CodeBuild's typical timeout
+    # Some tasks like cracked256 with high PBKDF2 iterations can take 8-10 minutes
+    timeout 900 docker run --rm \
+        -e CI_FAST_MODE=1 \
         -v "$TASK_DIR/solution:/solution:ro" \
         -v "$TASK_DIR/tests:/tests:ro" \
         -w /app \
@@ -86,7 +91,12 @@ if [ -f "$TASK_DIR/environment/Dockerfile" ]; then
 
     EXIT_CODE=$?
 
-    if [ $EXIT_CODE -eq 0 ]; then
+    if [ $EXIT_CODE -eq 124 ]; then
+        echo "⚠️  Oracle test TIMEOUT (exceeded 900s / 15 minutes)"
+        echo "This task may be too computationally intensive for CI"
+        echo "Consider adding CI_FAST_MODE support to the oracle solution"
+        exit 1
+    elif [ $EXIT_CODE -eq 0 ]; then
         echo "✅ Oracle test PASSED"
         exit 0
     else
