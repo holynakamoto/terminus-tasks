@@ -8,6 +8,7 @@ __pycache__/
 # Harbor
 jobs/
 .harbor/
+harbor_tasks/
 
 # Task artifacts
 *.zip
