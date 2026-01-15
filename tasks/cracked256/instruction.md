@@ -46,7 +46,7 @@ The output file `/app/cracked.csv` must contain:
 ## Implementation Constraints
 
 - You may use any tools or libraries available in the environment
-- Solution must complete within the timeout period (15 minutes)
+- Solution must complete within the timeout period
 - Handle edge cases gracefully: some entries may have unusual parameters (empty salts, extreme iteration counts, malformed formatting)
 - Use absolute paths: `/app/hashes.txt`, `/app/dictionary.txt`, `/app/cracked.csv`
 
