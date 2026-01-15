@@ -36,25 +36,33 @@ jobs:
       - name: Detect changed tasks
         id: detect
         run: |
-          # Get changed files
+          # Get changed files based on event type
           if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PRs, compare against the base branch
+            git fetch origin ${{ github.base_ref }}
             CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
           else
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+            # For push events, compare against previous commit
+            # Use HEAD~1 if available, otherwise compare against empty tree (initial commit)
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+            else
+              CHANGED_FILES=$(git diff --name-only --diff-filter=A HEAD)
+            fi
           fi
 
-          # Extract unique task directories
+          # Extract unique task directories from changed files
           TASKS=$(echo "$CHANGED_FILES" | grep '^tasks/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
 
           echo "tasks=$TASKS" >> $GITHUB_OUTPUT
 
           if [ "$TASKS" = "[]" ] || [ -z "$TASKS" ]; then
             echo "has_tasks=false" >> $GITHUB_OUTPUT
+            echo "No task changes detected"
           else
             echo "has_tasks=true" >> $GITHUB_OUTPUT
+            echo "Changed tasks: $TASKS"
           fi
-
-          echo "Changed tasks: $TASKS"
 
   validate-oracle:
     needs: detect-changed-tasks
@@ -73,6 +81,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+          cache: 'pip'
 
       - name: Install test dependencies
         run: |
@@ -80,6 +89,15 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.task }}-${{ hashFiles(format('tasks/{0}/environment/Dockerfile', matrix.task)) }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ matrix.task }}-
+            ${{ runner.os }}-buildx-
 
       - name: Prepare test environment
         run: |
@@ -132,6 +150,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+          cache: 'pip'
 
       - name: Install test dependencies
         run: |
@@ -139,6 +158,15 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.task }}-${{ hashFiles(format('tasks/{0}/environment/Dockerfile', matrix.task)) }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ matrix.task }}-
+            ${{ runner.os }}-buildx-
 
       - name: Prepare test environment
         run: |

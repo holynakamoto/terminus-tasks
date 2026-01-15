@@ -40,39 +40,57 @@ echo "Found solution script: $SOLVE_SCRIPT"
 # Build the Docker image if Dockerfile exists
 if [ -f "$TASK_DIR/environment/Dockerfile" ]; then
     echo "Building Docker environment..."
-    docker build -t "$TASK_NAME-test" "$TASK_DIR/environment/"
+    docker buildx build \
+        --cache-from=type=local,src=/tmp/.buildx-cache \
+        --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
+        --load \
+        -t "$TASK_NAME-test" \
+        "$TASK_DIR/environment/"
 
-    # Run the solution in the container
-    echo "Running solution in Docker container..."
+    # Move cache to prevent unlimited growth
+    if [ -d "/tmp/.buildx-cache-new" ]; then
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+    fi
+
+    # Run solution AND tests in the same container to preserve state
+    echo "Running solution and tests in Docker container..."
     docker run --rm \
         -v "$TASK_DIR/solution:/solution:ro" \
         -v "$TASK_DIR/tests:/tests:ro" \
         -w /app \
         "$TASK_NAME-test" \
-        bash -c "cp /solution/* /app/ && chmod +x /app/solve.sh && /app/solve.sh"
+        bash -c '
+            set -e
+            echo "=== Running solution ==="
+            cp /solution/* /app/
+            chmod +x /app/solve.sh 2>/dev/null || true
+            if [ -f /app/solve.sh ]; then
+                /app/solve.sh
+            elif [ -f /app/solve.py ]; then
+                python3 /app/solve.py
+            else
+                echo "No solve script found"
+                exit 1
+            fi
 
-    SOLVE_EXIT=$?
+            echo ""
+            echo "=== Running tests ==="
+            if [ -f /tests/test.sh ]; then
+                bash /tests/test.sh
+            fi
+            if [ -f /tests/test_outputs.py ]; then
+                python3 -m pytest /tests/test_outputs.py -v
+            fi
+        '
 
-    if [ $SOLVE_EXIT -ne 0 ]; then
-        echo "❌ Solution script failed with exit code $SOLVE_EXIT"
-        exit 1
-    fi
+    EXIT_CODE=$?
 
-    # Run tests in the container
-    echo "Running tests..."
-    docker run --rm \
-        -v "$TASK_DIR/tests:/tests:ro" \
-        -w /app \
-        "$TASK_NAME-test" \
-        bash -c "if [ -f /tests/test.sh ]; then bash /tests/test.sh; fi && if [ -f /tests/test_outputs.py ]; then python3 -m pytest /tests/test_outputs.py -v; fi"
-
-    TEST_EXIT=$?
-
-    if [ $TEST_EXIT -eq 0 ]; then
+    if [ $EXIT_CODE -eq 0 ]; then
         echo "✅ Oracle test PASSED"
         exit 0
     else
-        echo "❌ Oracle test FAILED"
+        echo "❌ Oracle test FAILED with exit code $EXIT_CODE"
         exit 1
     fi
 else
