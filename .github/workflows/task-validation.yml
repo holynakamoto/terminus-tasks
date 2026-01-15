@@ -64,8 +64,54 @@ jobs:
             echo "Changed tasks: $TASKS"
           fi
 
-  validate-oracle:
+  static-checks:
     needs: detect-changed-tasks
+    if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv and dependencies
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          source $HOME/.local/bin/env
+          uv pip install --system harbor==0.1.25 ruff
+
+      - name: Run Ruff Lint
+        run: |
+          ruff check tasks/${{ matrix.task }}
+
+      - name: Run LLMaJ Check (GPT-5)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+        run: |
+          source $HOME/.local/bin/env
+          # Create task folder for harbor check
+          mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
+          cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
+          harbor tasks check -m openai/@openai-tbench/gpt-5 --output-path $HOME/${{ matrix.task }}_llmaj.json $HOME/harbor_tasks/${{ matrix.task }}
+
+      - name: Upload LLMaJ artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llmaj-${{ matrix.task }}-report
+          path: $HOME/${{ matrix.task }}_llmaj.json
+
+  validate-oracle:
+    needs: [detect-changed-tasks, static-checks]
     if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
     runs-on: ubuntu-latest
     strategy:
@@ -134,7 +180,7 @@ jobs:
           if-no-files-found: ignore
 
   validate-nop:
-    needs: detect-changed-tasks
+    needs: [detect-changed-tasks, static-checks]
     if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
     runs-on: ubuntu-latest
     strategy:
@@ -190,8 +236,72 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  validate-difficulty:
+    needs: [detect-changed-tasks, validate-oracle, validate-nop]
+    if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install uv and harbor
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          source $HOME/.local/bin/env
+          uv pip install --system harbor==0.1.25 terminal-bench==0.2.18
+
+      - name: Prepare task for harbor
+        run: |
+          mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
+          cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
+
+      - name: Run GPT-5 Difficulty Eval
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+        run: |
+          source $HOME/.local/bin/env
+          # Run 3 times to get a better sense of difficulty (as requested)
+          # We use trial count in harbor run if supported, otherwise loop
+          for i in {1..3}; do
+            harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p $HOME/harbor_tasks/${{ matrix.task }}
+          done
+
+      - name: Run Claude Sonnet 4.5 Difficulty Eval
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+        run: |
+          source $HOME/.local/bin/env
+          for i in {1..3}; do
+            harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
+          done
+
+      - name: Upload difficulty results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: difficulty-${{ matrix.task }}-results
+          path: |
+            $HOME/jobs/**
+            $HOME/harbor_tasks/**/*.log
+          retention-days: 7
+
   summary:
-    needs: [validate-oracle, validate-nop]
+    needs: [static-checks, validate-oracle, validate-nop, validate-difficulty]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -210,4 +320,16 @@ jobs:
             echo "✅ NOP validation passed" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ NOP validation failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.static-checks.result }}" = "success" ]; then
+            echo "✅ Static checks (Ruff & LLMaJ) passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Static checks failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.validate-difficulty.result }}" = "success" ]; then
+            echo "✅ Difficulty evaluations completed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Difficulty evaluations failed or timed out" >> $GITHUB_STEP_SUMMARY
           fi

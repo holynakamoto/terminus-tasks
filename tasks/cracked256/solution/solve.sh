@@ -8,6 +8,8 @@ import base64
 import random
 import os
 
+random.seed(42)
+
 # Base dictionary words
 base_words = [
     'password', 'admin', 'secret', 'test', 'hello', 'welcome', 'master',

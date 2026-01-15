@@ -226,6 +226,12 @@ def test_hashes_file_integrity():
         f"Extra: {valid_usernames - expected_users}. " \
         f"File may have been tampered with."
 
+    # Verify a specific hash to binding the content to known ground truth (anti-cheating)
+    # user001:pbkdf2_sha256$1000$c2FsdDA=$ZuZkg83RWN1L+8O/IlkI1EMUbKeXWfHi0oUTMNucXYs=
+    known_hash = "user001:pbkdf2_sha256$1000$c2FsdDA=$ZuZkg83RWN1L+8O/IlkI1EMUbKeXWfHi0oUTMNucXYs="
+    assert any(known_hash in line for line in lines), \
+        "Hash file content mismatch. Do not modify the input hashes file."
+
 
 def test_mangling_rules_were_applied():
     """Verify that password mangling rules were likely applied."""
