@@ -116,8 +116,8 @@ hashes.insert(10, malformed1)
 malformed2 = "baduser2:pbkdf2_sha256$10000$c2FsdA=="
 hashes.insert(25, malformed2)
 
-# Trap 3: Wrong base64 padding on salt
-malformed3 = "baduser3:pbkdf2_sha256$50000$c2FsdA$dGVzdGhhc2g="
+# Trap 3: Invalid base64 in salt (contains invalid character)
+malformed3 = "baduser3:pbkdf2_sha256$50000$c2Fsd@$dGVzdGhhc2g="
 hashes.insert(40, malformed3)
 
 # Trap 4: Unknown hash algorithm (should skip)
