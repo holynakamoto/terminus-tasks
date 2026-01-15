@@ -102,53 +102,26 @@ jobs:
 
       - name: Prepare test environment
         run: |
-          mkdir -p ~/harbor_tasks/${{ matrix.task }}
-          cp -r tasks/${{ matrix.task }}/* ~/harbor_tasks/${{ matrix.task }}/
-          ls -R ~/harbor_tasks/${{ matrix.task }}
+          mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
+          cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
+          ls -R $HOME/harbor_tasks/${{ matrix.task }}
 
       - name: Run Oracle test
         id: oracle_test
         run: |
-          cd ~
+          cd $HOME/harbor_tasks
           TASK=${{ matrix.task }}
 
-          # Create a mock harbor_agent_run.py if needed
-          # This simulates the CodeBuild helper script
-          mkdir -p ./helper
-          cat > ./helper/harbor_agent_run.py << 'PYTHON_SCRIPT'
-          #!/usr/bin/env python3
-          import sys
-          import subprocess
-          import argparse
+          echo "🤖 Testing with oracle agent"
+          echo "========================================"
 
-          parser = argparse.ArgumentParser()
-          parser.add_argument('--agent', required=True)
-          parser.add_argument('--key', required=True)
-          parser.add_argument('task', help='Task name')
-          args = parser.parse_args()
-
-          print(f"🤖 Testing with {args.agent} agent")
-          print("=" * 40)
-
-          # Run harbor test simulation
-          result = subprocess.run(
-              ['harbor', 'test', '--agent', args.agent, '--trials', '1', args.task],
-              cwd='/root/harbor_tasks',
-              capture_output=False
-          )
-
-          sys.exit(result.returncode)
-          PYTHON_SCRIPT
-
-          chmod +x ./helper/harbor_agent_run.py
-
-          # Run the test
-          python ./helper/harbor_agent_run.py --agent oracle --key oracle "$TASK"
+          # Run harbor test directly
+          harbor test --agent oracle --trials 1 "$TASK"
         continue-on-error: true
 
       - name: Check Oracle test result
         run: |
-          if [ ${{ steps.oracle_test.outcome }} == 'success' ]; then
+          if [ "${{ steps.oracle_test.outcome }}" = "success" ]; then
             echo "✅ Oracle test passed for ${{ matrix.task }}"
             exit 0
           else
@@ -162,9 +135,11 @@ jobs:
         with:
           name: oracle-${{ matrix.task }}-logs
           path: |
-            ~/jobs/**
-            ~/harbor_tasks/**/*.log
+            ${{ runner.temp }}/jobs/**
+            $HOME/jobs/**
+            $HOME/harbor_tasks/**/*.log
           retention-days: 7
+          if-no-files-found: ignore
 
   validate-nop:
     needs: detect-changed-tasks
@@ -204,52 +179,26 @@ jobs:
 
       - name: Prepare test environment
         run: |
-          mkdir -p ~/harbor_tasks/${{ matrix.task }}
-          cp -r tasks/${{ matrix.task }}/* ~/harbor_tasks/${{ matrix.task }}/
+          mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
+          cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
 
       - name: Run NOP test
         id: nop_test
         run: |
-          cd ~
+          cd $HOME/harbor_tasks
           TASK=${{ matrix.task }}
 
-          mkdir -p ./helper
-          cat > ./helper/harbor_agent_run.py << 'PYTHON_SCRIPT'
-          #!/usr/bin/env python3
-          import sys
-          import subprocess
-          import argparse
+          echo "🤖 Testing with nop agent"
+          echo "========================================"
 
-          parser = argparse.ArgumentParser()
-          parser.add_argument('--agent', required=True)
-          parser.add_argument('--key', required=True)
-          parser.add_argument('task', help='Task name')
-          args = parser.parse_args()
-
-          print(f"🤖 Testing with {args.agent} agent")
-          print("=" * 40)
-
-          result = subprocess.run(
-              ['harbor', 'test', '--agent', args.agent, '--trials', '1', args.task],
-              cwd='/root/harbor_tasks',
-              capture_output=False
-          )
-
-          # NOP agent should fail (return non-zero)
-          if args.agent == 'nop':
-              if result.returncode != 0:
-                  print("✅ NOP agent correctly failed (expected behavior)")
-                  sys.exit(0)
-              else:
-                  print("❌ NOP agent unexpectedly succeeded")
-                  sys.exit(1)
-
-          sys.exit(result.returncode)
-          PYTHON_SCRIPT
-
-          chmod +x ./helper/harbor_agent_run.py
-
-          python ./helper/harbor_agent_run.py --agent nop --key nop "$TASK"
+          # Run harbor test - NOP should fail
+          if harbor test --agent nop --trials 1 "$TASK"; then
+            echo "❌ NOP agent unexpectedly succeeded"
+            exit 1
+          else
+            echo "✅ NOP agent correctly failed (expected behavior)"
+            exit 0
+          fi
 
       - name: Upload test artifacts
         if: always()
@@ -257,9 +206,11 @@ jobs:
         with:
           name: nop-${{ matrix.task }}-logs
           path: |
-            ~/jobs/**
-            ~/harbor_tasks/**/*.log
+            ${{ runner.temp }}/jobs/**
+            $HOME/jobs/**
+            $HOME/harbor_tasks/**/*.log
           retention-days: 7
+          if-no-files-found: ignore
 
   summary:
     needs: [validate-oracle, validate-nop]
