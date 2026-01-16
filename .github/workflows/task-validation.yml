@@ -27,6 +27,7 @@ on:
 jobs:
   detect-changed-tasks:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       tasks: ${{ steps.detect.outputs.tasks }}
       has_tasks: ${{ steps.detect.outputs.has_tasks }}
@@ -77,6 +78,7 @@ jobs:
     needs: detect-changed-tasks
     if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
@@ -99,7 +101,6 @@ jobs:
           $HOME/.local/bin/uv pip install --system harbor==0.1.25 ruff
 
       - name: Check Portkey Secret
-        if: env.PORTKEY_API_KEY == ''
         env:
           PORTKEY_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
         run: |
@@ -108,6 +109,7 @@ jobs:
             echo "Please add it in Settings > Secrets and variables > Actions"
             exit 1
           fi
+          echo "✅ PORTKEY_API_KEY secret is configured"
 
       - name: Run Ruff Lint
         run: |
@@ -155,6 +157,7 @@ jobs:
     needs: [detect-changed-tasks, static-checks]
     if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
@@ -224,6 +227,7 @@ jobs:
     needs: [detect-changed-tasks, static-checks]
     if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
@@ -279,8 +283,13 @@ jobs:
 
   validate-difficulty:
     needs: [detect-changed-tasks, validate-oracle, validate-nop]
-    if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
+    # Only run difficulty validation on main branch or when 'test-difficulty' label is present
+    # This is expensive (10 full agent runs) and should be used sparingly
+    if: |
+      needs.detect-changed-tasks.outputs.has_tasks == 'true' &&
+      (github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'test-difficulty'))
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
@@ -305,7 +314,6 @@ jobs:
           $HOME/.local/bin/uv pip install --system harbor==0.1.25 terminal-bench==0.2.18
 
       - name: Check Portkey Secret
-        if: env.PORTKEY_API_KEY == ''
         env:
           PORTKEY_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
         run: |
@@ -313,6 +321,7 @@ jobs:
             echo "❌ ERROR: PORTKEY_API_KEY secret is not set in GitHub Secrets!"
             exit 1
           fi
+          echo "✅ PORTKEY_API_KEY secret is configured"
 
       - name: Prepare task for harbor
         run: |
@@ -393,6 +402,7 @@ jobs:
     needs: [static-checks, validate-oracle, validate-nop, validate-difficulty]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Summary
         run: |

@@ -185,24 +185,35 @@ def main():
     # Parse all results
     parsed_results = [parse_result_file(r) for r in all_results]
 
-    # Sort by timestamp to separate GPT-5 and Claude runs
-    # Assuming the first 5 runs are GPT-5 and the next 5 are Claude
-    # based on the workflow order
-    parsed_results.sort(key=lambda x: x["timestamp"])
+    # Sort by file modification time (more reliable than timestamp field)
+    # This preserves the execution order: GPT-5 runs first, then Claude
+    all_results_with_mtime = [(r, r.stat().st_mtime) for r in all_results]
+    all_results_with_mtime.sort(key=lambda x: x[1])
+    sorted_result_files = [r for r, _ in all_results_with_mtime]
 
-    # Split results (first half GPT-5, second half Claude)
-    # In the workflow, we run GPT-5 5 times, then Claude 5 times
-    # So we'll try to split them evenly
+    # Parse in the sorted order
+    parsed_results = [parse_result_file(r) for r in sorted_result_files]
+
+    # Split results based on workflow execution order
+    # Workflow runs GPT-5 5 times, then Claude 5 times
     total_runs = len(parsed_results)
-    split_point = total_runs // 2
 
-    gpt5_results = parsed_results[:split_point] if total_runs > 1 else []
-    claude_results = parsed_results[split_point:] if total_runs > 1 else parsed_results
-
-    # If we have exactly 10 results, assume first 5 are GPT-5, last 5 are Claude
     if total_runs == 10:
+        # Perfect case: 5 GPT-5 + 5 Claude
         gpt5_results = parsed_results[:5]
         claude_results = parsed_results[5:]
+    elif total_runs >= 2:
+        # Split evenly if we have at least 2 results
+        split_point = total_runs // 2
+        gpt5_results = parsed_results[:split_point]
+        claude_results = parsed_results[split_point:]
+    elif total_runs == 1:
+        # Only one result - can't determine difficulty reliably
+        gpt5_results = []
+        claude_results = parsed_results
+    else:
+        gpt5_results = []
+        claude_results = []
 
     # Format results
     formatted_output = format_results_for_github(gpt5_results, claude_results, task_name)
