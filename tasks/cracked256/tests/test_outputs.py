@@ -11,6 +11,8 @@ import hashlib
 import base64
 
 CANARY_STRING = "CRACKED_BY_TERMINUS_AGENT_2026"
+EXPECTED_VALID_HASHES = 60  # Oracle generates exactly 60 valid PBKDF2 entries
+EXPECTED_MALFORMED_HASHES = 5  # Oracle inserts exactly 5 malformed entries
 
 
 def test_output_file_exists():
@@ -189,7 +191,8 @@ def test_hashes_file_integrity():
         if parts[0] == 'pbkdf2_sha256' and len(parts) >= 4:
             try:
                 # Try to parse as valid PBKDF2 (strict check for integrity)
-                iterations_str = parts[1]
+                # Handle comma-formatted iteration counts (e.g., "100,000")
+                iterations_str = parts[1].replace(',', '')
                 int(iterations_str)
 
                 # Validate base64 components
@@ -206,14 +209,14 @@ def test_hashes_file_integrity():
             # Non-PBKDF2 format (bcrypt, argon2, etc.)
             malformed_count += 1
 
-    # The oracle generates exactly 60 valid PBKDF2 entries
-    assert valid_pbkdf2_count == 60, \
-        f"Expected exactly 60 valid PBKDF2 entries, found {valid_pbkdf2_count}. " \
+    # The oracle generates exactly EXPECTED_VALID_HASHES valid PBKDF2 entries
+    assert valid_pbkdf2_count == EXPECTED_VALID_HASHES, \
+        f"Expected exactly {EXPECTED_VALID_HASHES} valid PBKDF2 entries, found {valid_pbkdf2_count}. " \
         f"File may have been tampered with."
 
-    # The oracle inserts exactly 5 malformed entries
-    assert malformed_count == 5, \
-        f"Expected exactly 5 malformed entries, found {malformed_count}. " \
+    # The oracle inserts exactly EXPECTED_MALFORMED_HASHES malformed entries
+    assert malformed_count == EXPECTED_MALFORMED_HASHES, \
+        f"Expected exactly {EXPECTED_MALFORMED_HASHES} malformed entries, found {malformed_count}. " \
         f"File may have been tampered with."
 
     # Verify usernames follow expected pattern (user001-user060)
