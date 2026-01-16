@@ -96,12 +96,7 @@ def format_results_for_github(results: dict, task_name: str = "") -> str:
     """Format LLMaJ results for GitHub Actions summary."""
     output = []
 
-    # Header
-    if task_name:
-        output.append(f"## 📋 LLMaJ Check Results: {task_name}")
-    else:
-        output.append("## 📋 LLMaJ Check Results")
-    output.append("")
+    # Note: Header is now output by the workflow itself, so we skip it here
 
     # Overall status
     passed = results["passed_count"]
