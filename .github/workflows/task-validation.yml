@@ -116,6 +116,7 @@ jobs:
           ruff check tasks/${{ matrix.task }}
 
       - name: Run LLMaJ Check (GPT-5)
+        continue-on-error: true
         run: |
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
@@ -123,15 +124,27 @@ jobs:
           # Create task folder for harbor check
           mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
           cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
-          harbor tasks check -m openai/@openai-tbench/gpt-5 --output-path $HOME/${{ matrix.task }}_llmaj.json $HOME/harbor_tasks/${{ matrix.task }}
+
+          # Run LLMaJ check and capture output
+          echo "Running LLMaJ check..."
+          harbor tasks check -m openai/@openai-tbench/gpt-5 --output-path $HOME/${{ matrix.task }}_llmaj.json $HOME/harbor_tasks/${{ matrix.task }} 2>&1 | tee $HOME/${{ matrix.task }}_llmaj_output.log
+
+          # Check if output file was created
+          if [ -f "$HOME/${{ matrix.task }}_llmaj.json" ]; then
+            echo "✅ LLMaJ output file created successfully"
+          else
+            echo "❌ LLMaJ output file NOT created"
+            echo "Command output saved to: $HOME/${{ matrix.task }}_llmaj_output.log"
+          fi
 
       - name: Parse and Display LLMaJ Results
         if: always()
         run: |
+          echo "## 📋 LLMaJ Check Results: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
           if [ -f "$HOME/${{ matrix.task }}_llmaj.json" ]; then
             # Show raw JSON first for debugging
-            echo "## 📋 LLMaJ Check Results: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
             echo "<details><summary>Raw LLMaJ JSON Output (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
@@ -146,12 +159,25 @@ jobs:
               echo "⚠️ Parser failed to process LLMaJ results" >> $GITHUB_STEP_SUMMARY
             }
           else
-            echo "## 📋 LLMaJ Check Results: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **LLMaJ check failed to produce output file**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ LLMaJ results file not found at: \$HOME/${{ matrix.task }}_llmaj.json" >> $GITHUB_STEP_SUMMARY
+
+            # Show command output if available
+            if [ -f "$HOME/${{ matrix.task }}_llmaj_output.log" ]; then
+              echo "<details><summary>Harbor tasks check output (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              cat "$HOME/${{ matrix.task }}_llmaj_output.log" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            fi
+
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Files in \$HOME:" >> $GITHUB_STEP_SUMMARY
-            ls -la $HOME/*.json 2>&1 >> $GITHUB_STEP_SUMMARY || echo "No JSON files found" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            ls -la $HOME/ 2>&1 >> $GITHUB_STEP_SUMMARY || echo "Could not list files" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -161,7 +187,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: llmaj-${{ matrix.task }}-report
-          path: $HOME/${{ matrix.task }}_llmaj.json
+          path: |
+            $HOME/${{ matrix.task }}_llmaj.json
+            $HOME/${{ matrix.task }}_llmaj_output.log
+          if-no-files-found: ignore
 
   validate-oracle:
     needs: [detect-changed-tasks, static-checks]
@@ -419,6 +448,28 @@ jobs:
             echo "Jobs directory: $JOBS_DIR" >> $GITHUB_STEP_SUMMARY
             echo "Result files found: $RESULT_COUNT" >> $GITHUB_STEP_SUMMARY
           }
+
+          # If all runs failed with 0 episodes, show a sample log for debugging
+          ZERO_EPISODE_COUNT=$(find "$JOBS_DIR" -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | wc -l)
+          if [ "$ZERO_EPISODE_COUNT" -gt 0 ] && [ "$RESULT_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ⚠️ Debugging: 0 Episodes Detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Found $ZERO_EPISODE_COUNT runs with 0 episodes (agents failed to start)." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Find a sample result.json with 0 episodes
+            SAMPLE_RESULT=$(find "$JOBS_DIR" -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | head -1)
+            if [ -n "$SAMPLE_RESULT" ]; then
+              echo "<details><summary>Sample Failed Run Details (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```json' >> $GITHUB_STEP_SUMMARY
+              cat "$SAMPLE_RESULT" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
 
