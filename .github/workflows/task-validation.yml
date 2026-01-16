@@ -117,11 +117,25 @@ jobs:
         run: |
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
-          
+
           # Create task folder for harbor check
           mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
           cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
           harbor tasks check -m openai/@openai-tbench/gpt-5 --output-path $HOME/${{ matrix.task }}_llmaj.json $HOME/harbor_tasks/${{ matrix.task }}
+
+      - name: Parse and Display LLMaJ Results
+        if: always()
+        run: |
+          echo "## LLMaJ Check Results for ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "$HOME/${{ matrix.task }}_llmaj.json" ]; then
+            python3 .github/scripts/parse-llmaj-results.py "$HOME/${{ matrix.task }}_llmaj.json" >> $GITHUB_STEP_SUMMARY || true
+          else
+            echo "⚠️ LLMaJ results file not found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload LLMaJ artifacts
         if: always()
@@ -317,6 +331,26 @@ jobs:
           for i in {1..5}; do
             harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
           done
+
+      - name: Calculate and Display Difficulty Rating
+        if: always()
+        run: |
+          echo "Calculating difficulty rating for ${{ matrix.task }}..."
+
+          # Find the jobs directory (harbor creates it in different locations)
+          if [ -d "$HOME/harbor_tasks/${{ matrix.task }}/jobs" ]; then
+            JOBS_DIR="$HOME/harbor_tasks/${{ matrix.task }}/jobs"
+          elif [ -d "$HOME/jobs" ]; then
+            JOBS_DIR="$HOME/jobs"
+          else
+            echo "⚠️ No jobs directory found. Difficulty calculation skipped." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          # Run the difficulty calculation script
+          python3 .github/scripts/calculate-difficulty.py "${{ matrix.task }}" "$JOBS_DIR" >> $GITHUB_STEP_SUMMARY || true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload difficulty results
         if: always()
