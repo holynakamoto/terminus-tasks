@@ -144,40 +144,28 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ -f "$HOME/${{ matrix.task }}_llmaj.json" ]; then
-            # Show raw JSON first for debugging
-            echo "<details><summary>Raw LLMaJ JSON Output (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat "$HOME/${{ matrix.task }}_llmaj.json" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-
-            # Try to parse it
+            # Parse and display results
             python3 .github/scripts/parse-llmaj-results.py "$HOME/${{ matrix.task }}_llmaj.json" "${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY 2>&1 || {
-              echo "⚠️ Parser failed to process LLMaJ results" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ Parser failed, showing raw JSON:" >> $GITHUB_STEP_SUMMARY
+              echo '```json' >> $GITHUB_STEP_SUMMARY
+              cat "$HOME/${{ matrix.task }}_llmaj.json" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
             }
           else
-            echo "⚠️ **LLMaJ check failed to produce output file**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **LLMaJ check failed to produce output file**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
-            # Show command output if available
+            # Show command output directly (no collapsible section)
             if [ -f "$HOME/${{ matrix.task }}_llmaj_output.log" ]; then
-              echo "<details><summary>Harbor tasks check output (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Harbor tasks check output:**" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
               cat "$HOME/${{ matrix.task }}_llmaj_output.log" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ Log file not found: \$HOME/${{ matrix.task }}_llmaj_output.log" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
             fi
-
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Files in \$HOME:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            ls -la $HOME/ 2>&1 >> $GITHUB_STEP_SUMMARY || echo "Could not list files" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -387,24 +375,7 @@ jobs:
         if: always()
         run: |
           echo "Calculating difficulty rating for ${{ matrix.task }}..."
-
-          # Debug: Show directory structure
           echo "## 📊 Difficulty Evaluation: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "<details><summary>Debug: Directory Structure (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "Contents of \$HOME:" >> $GITHUB_STEP_SUMMARY
-          ls -la $HOME/ 2>&1 >> $GITHUB_STEP_SUMMARY || true
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Looking for jobs directories:" >> $GITHUB_STEP_SUMMARY
-          find $HOME -type d -name "jobs" 2>/dev/null >> $GITHUB_STEP_SUMMARY || true
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Looking for result.json files:" >> $GITHUB_STEP_SUMMARY
-          find $HOME -name "result.json" -type f 2>/dev/null >> $GITHUB_STEP_SUMMARY || true
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "</details>" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Find the jobs directory (try multiple locations)
@@ -453,21 +424,27 @@ jobs:
           ZERO_EPISODE_COUNT=$(find "$JOBS_DIR" -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | wc -l)
           if [ "$ZERO_EPISODE_COUNT" -gt 0 ] && [ "$RESULT_COUNT" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### ⚠️ Debugging: 0 Episodes Detected" >> $GITHUB_STEP_SUMMARY
+            echo "---" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Found $ZERO_EPISODE_COUNT runs with 0 episodes (agents failed to start)." >> $GITHUB_STEP_SUMMARY
+            echo "### 🐛 Critical: All Agents Failing to Start" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Issue**: Found $ZERO_EPISODE_COUNT/$RESULT_COUNT runs with 0 episodes (agents failed to start)." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This means the agents aren't even initializing - likely due to:" >> $GITHUB_STEP_SUMMARY
+            echo "- Docker build failure" >> $GITHUB_STEP_SUMMARY
+            echo "- Environment setup error" >> $GITHUB_STEP_SUMMARY
+            echo "- Task configuration issue" >> $GITHUB_STEP_SUMMARY
+            echo "- API/authentication problem" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
             # Find a sample result.json with 0 episodes
             SAMPLE_RESULT=$(find "$JOBS_DIR" -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | head -1)
             if [ -n "$SAMPLE_RESULT" ]; then
-              echo "<details><summary>Sample Failed Run Details (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Sample Failed Run Details:**" >> $GITHUB_STEP_SUMMARY
               echo '```json' >> $GITHUB_STEP_SUMMARY
               cat "$SAMPLE_RESULT" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "</details>" >> $GITHUB_STEP_SUMMARY
             fi
           fi
 
