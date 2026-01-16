@@ -126,13 +126,20 @@ jobs:
       - name: Parse and Display LLMaJ Results
         if: always()
         run: |
-          echo "## LLMaJ Check Results for ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
           if [ -f "$HOME/${{ matrix.task }}_llmaj.json" ]; then
-            python3 .github/scripts/parse-llmaj-results.py "$HOME/${{ matrix.task }}_llmaj.json" >> $GITHUB_STEP_SUMMARY || true
+            python3 .github/scripts/parse-llmaj-results.py "$HOME/${{ matrix.task }}_llmaj.json" "${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY 2>&1 || {
+              echo "⚠️ Failed to parse LLMaJ results, showing raw file contents:" >> $GITHUB_STEP_SUMMARY
+              echo '```json' >> $GITHUB_STEP_SUMMARY
+              cat "$HOME/${{ matrix.task }}_llmaj.json" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            }
           else
-            echo "⚠️ LLMaJ results file not found" >> $GITHUB_STEP_SUMMARY
+            echo "## 📋 LLMaJ Check Results: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ LLMaJ results file not found at: \$HOME/${{ matrix.task }}_llmaj.json" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Files in \$HOME:" >> $GITHUB_STEP_SUMMARY
+            ls -la $HOME/*.json 2>&1 >> $GITHUB_STEP_SUMMARY || echo "No JSON files found" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -340,15 +347,35 @@ jobs:
           # Find the jobs directory (harbor creates it in different locations)
           if [ -d "$HOME/harbor_tasks/${{ matrix.task }}/jobs" ]; then
             JOBS_DIR="$HOME/harbor_tasks/${{ matrix.task }}/jobs"
+            echo "Found jobs directory: $JOBS_DIR"
           elif [ -d "$HOME/jobs" ]; then
             JOBS_DIR="$HOME/jobs"
+            echo "Found jobs directory: $JOBS_DIR"
           else
+            echo "## 📊 Difficulty Evaluation: No Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
             echo "⚠️ No jobs directory found. Difficulty calculation skipped." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Searched locations:" >> $GITHUB_STEP_SUMMARY
+            echo "- \$HOME/harbor_tasks/${{ matrix.task }}/jobs" >> $GITHUB_STEP_SUMMARY
+            echo "- \$HOME/jobs" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
 
+          # Count result files
+          RESULT_COUNT=$(find "$JOBS_DIR" -name "result.json" -type f 2>/dev/null | wc -l)
+          echo "Found $RESULT_COUNT result.json files"
+
           # Run the difficulty calculation script
-          python3 .github/scripts/calculate-difficulty.py "${{ matrix.task }}" "$JOBS_DIR" >> $GITHUB_STEP_SUMMARY || true
+          python3 .github/scripts/calculate-difficulty.py "${{ matrix.task }}" "$JOBS_DIR" >> $GITHUB_STEP_SUMMARY 2>&1 || {
+            echo "## 📊 Difficulty Evaluation: Error" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Failed to calculate difficulty rating" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Jobs directory: $JOBS_DIR" >> $GITHUB_STEP_SUMMARY
+            echo "Result files found: $RESULT_COUNT" >> $GITHUB_STEP_SUMMARY
+          }
 
           echo "" >> $GITHUB_STEP_SUMMARY
 

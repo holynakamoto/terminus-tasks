@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Parse LLMaJ check results and display them in a human-readable format.
+Handles harbor's actual task quality check output format.
 """
 import json
 import sys
@@ -13,103 +14,133 @@ def parse_llmaj_results(llmaj_json_path: str) -> dict:
         with open(llmaj_json_path, 'r') as f:
             data = json.load(f)
 
-        # Extract relevant information from LLMaJ output
-        # The exact structure depends on harbor's output format
-        # This is a general parser that handles common fields
-
         results = {
             "overall_status": "unknown",
-            "issues": [],
-            "warnings": [],
-            "passed_checks": [],
-            "failed_checks": []
+            "passed_count": 0,
+            "failed_count": 0,
+            "checks": []
         }
 
-        # Handle different possible LLMaJ output formats
-        if isinstance(data, dict):
-            # Check for common status fields
+        # Harbor's format has a 'checks' array with objects containing:
+        # - check: name of the check
+        # - outcome: "pass" or "fail"
+        # - explanation: detailed explanation
+        if isinstance(data, dict) and "checks" in data:
+            for check in data["checks"]:
+                check_name = check.get("check", "Unknown Check")
+                outcome = check.get("outcome", "unknown")
+                explanation = check.get("explanation", "No explanation provided")
+
+                results["checks"].append({
+                    "name": check_name,
+                    "outcome": outcome,
+                    "explanation": explanation
+                })
+
+                if outcome == "pass":
+                    results["passed_count"] += 1
+                elif outcome == "fail":
+                    results["failed_count"] += 1
+
+            # Determine overall status
+            if results["failed_count"] == 0:
+                results["overall_status"] = "passed"
+            else:
+                results["overall_status"] = "failed"
+
+        # Fallback: if no checks found, try other formats
+        elif isinstance(data, dict):
             if "status" in data:
                 results["overall_status"] = data["status"]
             elif "passed" in data:
                 results["overall_status"] = "passed" if data["passed"] else "failed"
-
-            # Extract issues/warnings
-            if "issues" in data:
-                results["issues"] = data["issues"]
-            if "warnings" in data:
-                results["warnings"] = data["warnings"]
-
-            # Extract check results
-            if "checks" in data:
-                for check in data["checks"]:
-                    if check.get("passed", False):
-                        results["passed_checks"].append(check)
-                    else:
-                        results["failed_checks"].append(check)
 
         return results
 
     except FileNotFoundError:
         return {
             "overall_status": "error",
-            "issues": ["LLMaJ output file not found"],
-            "warnings": [],
-            "passed_checks": [],
-            "failed_checks": []
+            "passed_count": 0,
+            "failed_count": 0,
+            "checks": [{
+                "name": "File Error",
+                "outcome": "error",
+                "explanation": f"LLMaJ output file not found: {llmaj_json_path}"
+            }]
         }
     except json.JSONDecodeError as e:
         return {
             "overall_status": "error",
-            "issues": [f"Failed to parse LLMaJ JSON: {e}"],
-            "warnings": [],
-            "passed_checks": [],
-            "failed_checks": []
+            "passed_count": 0,
+            "failed_count": 0,
+            "checks": [{
+                "name": "Parse Error",
+                "outcome": "error",
+                "explanation": f"Failed to parse LLMaJ JSON: {e}"
+            }]
+        }
+    except Exception as e:
+        return {
+            "overall_status": "error",
+            "passed_count": 0,
+            "failed_count": 0,
+            "checks": [{
+                "name": "Unexpected Error",
+                "outcome": "error",
+                "explanation": f"Unexpected error: {e}"
+            }]
         }
 
 
-def format_results_for_github(results: dict) -> str:
+def format_results_for_github(results: dict, task_name: str = "") -> str:
     """Format LLMaJ results for GitHub Actions summary."""
     output = []
 
-    # Overall status
-    if results["overall_status"] == "passed":
-        output.append("✅ **LLMaJ Check: PASSED**")
-    elif results["overall_status"] == "failed":
-        output.append("❌ **LLMaJ Check: FAILED**")
+    # Header
+    if task_name:
+        output.append(f"## 📋 LLMaJ Check Results: {task_name}")
     else:
-        output.append("⚠️ **LLMaJ Check: " + results["overall_status"].upper() + "**")
+        output.append("## 📋 LLMaJ Check Results")
+    output.append("")
+
+    # Overall status
+    passed = results["passed_count"]
+    failed = results["failed_count"]
+    total = passed + failed
+
+    if results["overall_status"] == "passed":
+        output.append(f"### ✅ Overall: PASSED ({passed}/{total} checks passed)")
+    elif results["overall_status"] == "failed":
+        output.append(f"### ❌ Overall: FAILED ({failed}/{total} checks failed)")
+    else:
+        output.append(f"### ⚠️ Overall: {results['overall_status'].upper()}")
 
     output.append("")
 
-    # Failed checks (most important)
-    if results["failed_checks"]:
+    # Failed checks first (most important)
+    failed_checks = [c for c in results["checks"] if c["outcome"] in ["fail", "error"]]
+    if failed_checks:
         output.append("### ❌ Failed Checks")
-        for check in results["failed_checks"]:
-            name = check.get("name", "Unknown check")
-            message = check.get("message", "No details available")
-            output.append(f"- **{name}**: {message}")
         output.append("")
+        for check in failed_checks:
+            name = check["name"]
+            explanation = check["explanation"]
+            output.append(f"**{name}**")
+            output.append(f"> {explanation}")
+            output.append("")
 
-    # Issues
-    if results["issues"]:
-        output.append("### 🔴 Issues")
-        for issue in results["issues"]:
-            output.append(f"- {issue}")
+    # Passed checks (summary)
+    passed_checks = [c for c in results["checks"] if c["outcome"] == "pass"]
+    if passed_checks:
+        output.append(f"### ✅ Passed Checks ({len(passed_checks)})")
         output.append("")
-
-    # Warnings
-    if results["warnings"]:
-        output.append("### ⚠️ Warnings")
-        for warning in results["warnings"]:
-            output.append(f"- {warning}")
-        output.append("")
-
-    # Passed checks (for completeness)
-    if results["passed_checks"]:
-        output.append(f"### ✅ Passed Checks ({len(results['passed_checks'])})")
-        for check in results["passed_checks"]:
-            name = check.get("name", "Unknown check")
-            output.append(f"- {name}")
+        for check in passed_checks:
+            name = check["name"]
+            # Truncate long explanations for passed checks
+            explanation = check["explanation"]
+            if len(explanation) > 100:
+                explanation = explanation[:97] + "..."
+            output.append(f"- **{name}**: {explanation}")
         output.append("")
 
     return "\n".join(output)
@@ -117,23 +148,24 @@ def format_results_for_github(results: dict) -> str:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: parse-llmaj-results.py <llmaj_json_path>", file=sys.stderr)
+        print("Usage: parse-llmaj-results.py <llmaj_json_path> [task_name]", file=sys.stderr)
         sys.exit(1)
 
     llmaj_json_path = sys.argv[1]
+    task_name = sys.argv[2] if len(sys.argv) > 2 else ""
 
     # Parse results
     results = parse_llmaj_results(llmaj_json_path)
 
     # Format for GitHub
-    formatted_output = format_results_for_github(results)
+    formatted_output = format_results_for_github(results, task_name)
 
     # Print to stdout for GitHub Actions
     print(formatted_output)
 
     # Exit with error code if failed
-    if results["overall_status"] == "failed" or results["issues"]:
-        sys.exit(1)
+    if results["overall_status"] in ["failed", "error"] or results["failed_count"] > 0:
+        sys.exit(0)  # Don't fail the step, just report
     else:
         sys.exit(0)
 
