@@ -56,7 +56,7 @@ jobs:
           fi
 
           # Extract unique task directories from changed files
-          TASKS=$(echo "$CHANGED_FILES" | grep '^tasks/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          TASKS=$(echo "$CHANGED_FILES" | grep '^tasks/' || true | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
 
           # If only the workflow changed, default to testing cracked256 to verify CI logic
           if ([ "$TASKS" = "[]" ] || [ -z "$TASKS" ]) && echo "$CHANGED_FILES" | grep -q 'task-validation.yml'; then
@@ -353,21 +353,27 @@ jobs:
 
       - name: Run GPT-5 Difficulty Eval
         run: |
+          set -euo pipefail
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
-          
+
           # Run 5 times to establish a reliable pass rate
+          # Exit on first failure to surface errors immediately
           for i in {1..5}; do
+            echo "GPT-5 run $i/5..."
             harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p $HOME/harbor_tasks/${{ matrix.task }}
           done
 
       - name: Run Claude Sonnet 4.5 Difficulty Eval
         run: |
+          set -euo pipefail
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
           # Run 5 times to establish a reliable pass rate
+          # Exit on first failure to surface errors immediately
           for i in {1..5}; do
+            echo "Claude run $i/5..."
             harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
           done
 
@@ -459,6 +465,7 @@ jobs:
             $HOME/jobs/**
             $HOME/harbor_tasks/**/*.log
           retention-days: 7
+          if-no-files-found: ignore
 
   summary:
     needs: [static-checks, validate-oracle, validate-nop, validate-difficulty]
