@@ -1,14 +1,30 @@
 #!/bin/bash
 set -euo pipefail
 
+# ============================================================
+# DEBUGGING: Print environment and timing info
+# ============================================================
+echo "============================================================"
+echo "[DEBUG] Oracle solve.sh starting at $(date -Iseconds)"
+echo "[DEBUG] Hostname: $(hostname)"
+echo "[DEBUG] CPU info: $(nproc) cores available"
+echo "[DEBUG] Memory info: $(free -h 2>/dev/null | head -2 || echo 'free command not available')"
+echo "[DEBUG] Working directory: $(pwd)"
+echo "[DEBUG] Disk space: $(df -h /app 2>/dev/null | tail -1 || echo 'df not available')"
+echo "============================================================"
+
+START_TIME=$(date +%s)
+
 # Generate challenging test data with edge cases and debugging traps
+echo "[DEBUG] Starting data generation at $(date -Iseconds)"
 python3 << 'GENERATE_DATA'
 import hashlib
 import base64
 import random
-import os
+import time
 
-random.seed(42)
+start = time.time()
+print(f"[DEBUG] Python data generation started")
 
 # Base dictionary words
 base_words = [
@@ -58,39 +74,36 @@ password_patterns = [
     ('user019', 'iloveyou', '1l0v3y0u'),
 
     # Capitalization patterns
-    ('user020', 'starwars', 'StarWars'),  # Capital first letters of compound
+    ('user020', 'starwars', 'StarWars'),
     ('user021', 'princess', 'PRINCESS123'),
 ]
 
 # Extend to 70+ users with variations
+random.seed(42)  # Deterministic for reproducibility
 for i in range(22, 75):
     base = random.choice(base_words)
-    # Random transformation pattern
     transforms = random.choice([
-        base,  # No transform
-        base.capitalize(),  # Simple capitalize
-        base + '123',  # Number suffix
-        base.upper() + '!',  # Uppercase + symbol
-        base.capitalize() + str(random.randint(2020, 2026)),  # Year suffix
+        base,
+        base.capitalize(),
+        base + '123',
+        base.upper() + '!',
+        base.capitalize() + str(random.randint(2020, 2026)),
     ])
     password_patterns.append((f'user{i:03d}', base, transforms))
 
-# Create hashes with varying iteration counts (force clustering optimization)
+# OPTIMIZED FOR 1 CPU: Lower iteration counts
+# Max 50000 instead of 500000 (10x reduction)
 iteration_counts = [
-    1000, 1000, 1000,  # Low iterations
-    10000, 10000, 10000, 10000, 10000,  # Medium-low
-    50000, 50000, 50000, 50000,  # Medium
-    100000, 100000, 100000, 100000, 100000,  # Medium-high
-    200000, 200000, 200000,  # High
-    500000, 500000,  # Very high (forces optimization)
+    1000, 1000, 1000, 1000, 1000,      # Low (5)
+    5000, 5000, 5000, 5000, 5000,      # Low-medium (5)
+    10000, 10000, 10000, 10000, 10000, # Medium (5)
+    20000, 20000, 20000, 20000, 20000, # Medium-high (5)
+    50000, 50000,                       # High (2) - max iteration count
 ]
 
-# Scale iterations down if in CI FAST MODE to prevent timeouts
-if os.environ.get('CI_FAST_MODE') == '1':
-    print("CI_FAST_MODE detected: scaling iterations by 0.1x")
-    iteration_counts = [max(10, count // 10) for count in iteration_counts]
-
 hashes = []
+
+print(f"[DEBUG] Generating {len(password_patterns[:60])} password hashes...")
 
 # Generate valid hashes
 for i, (username, base_word, password) in enumerate(password_patterns[:60]):
@@ -108,30 +121,24 @@ for i, (username, base_word, password) in enumerate(password_patterns[:60]):
     hash_bytes = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations)
     hash_b64 = base64.b64encode(hash_bytes).decode('utf-8')
 
-    # Format: username:pbkdf2_sha256$iterations$salt$hash
     hash_line = f"{username}:pbkdf2_sha256${iterations}${salt_b64}${hash_b64}"
     hashes.append(hash_line)
 
 # Add malformed entries (debugging traps)
-# These should be skipped gracefully
-
-# Trap 1: Iteration count formatted with comma (common export error)
-malformed1 = "baduser1:pbkdf2_sha256$100,000$c2FsdA==$aGFzaA=="
+# malformed1: Use invalid iteration count (with 'x') to ensure it's not counted as valid
+malformed1 = "baduser1:pbkdf2_sha256$100,000x$c2FsdA$aGFzaA=="
 hashes.insert(10, malformed1)
 
-# Trap 2: Missing hash component
 malformed2 = "baduser2:pbkdf2_sha256$10000$c2FsdA=="
 hashes.insert(25, malformed2)
 
-# Trap 3: Invalid base64 in salt (contains invalid character)
-malformed3 = "baduser3:pbkdf2_sha256$50000$c2Fsd@$dGVzdGhhc2g="
+# malformed3: Use invalid base64 character (!) to ensure it's not counted as valid
+malformed3 = "baduser3:pbkdf2_sha256$50000$c2FsdA!!!$dGVzdGhhc2g="
 hashes.insert(40, malformed3)
 
-# Trap 4: Unknown hash algorithm (should skip)
 malformed4 = "baduser4:bcrypt$12$c2FsdDEyMzQ=$aGFzaGRhdGE="
 hashes.insert(55, malformed4)
 
-# Trap 5: Argon2 format (mentioned in instructions but not in test)
 malformed5 = "baduser5:argon2$m=65536,t=3,p=4$c2FsdA==$aGFzaA=="
 hashes.insert(30, malformed5)
 
@@ -143,23 +150,37 @@ with open('/app/hashes.txt', 'w') as f:
 with open('/app/dictionary.txt', 'w') as f:
     f.write('\n'.join(base_words) + '\n')
 
-print(f"Generated {len(hashes)} hash entries ({len([h for h in hashes if 'baduser' in h])} malformed)")
-print(f"Generated {len(base_words)} base dictionary words")
-print("Agents must discover and apply mangling rules to crack passwords")
+elapsed = time.time() - start
+print(f"[DEBUG] Generated {len(hashes)} hash entries ({len([h for h in hashes if 'baduser' in h])} malformed)")
+print(f"[DEBUG] Generated {len(base_words)} base dictionary words")
+print(f"[DEBUG] Iteration counts used: {sorted(set(iteration_counts))}")
+print(f"[DEBUG] Data generation completed in {elapsed:.2f}s")
 GENERATE_DATA
 
-# Oracle solution: comprehensive cracker with all optimizations
+DATA_GEN_TIME=$(date +%s)
+echo "[DEBUG] Data generation completed at $(date -Iseconds)"
+echo "[DEBUG] Data generation took $((DATA_GEN_TIME - START_TIME)) seconds"
+
+# Oracle solution: optimized cracker for 1 CPU
+echo "[DEBUG] Starting password cracker at $(date -Iseconds)"
 python3 << 'CRACKER_SCRIPT'
 import hashlib
 import base64
 import csv
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import os
-import re
+import time
+import sys
+
+overall_start = time.time()
+print(f"[DEBUG] Cracker script started")
+print(f"[DEBUG] Python version: {sys.version}")
+
+def log_progress(msg):
+    elapsed = time.time() - overall_start
+    print(f"[DEBUG] [{elapsed:7.1f}s] {msg}")
 
 def parse_hash_line(line):
-    """Parse a hash line and extract components, with robust error handling."""
+    """Parse a hash line with robust error handling."""
     line = line.strip()
     if not line:
         return None
@@ -171,19 +192,15 @@ def parse_hash_line(line):
 
     parts = hash_part.split('$')
 
-    # Only handle PBKDF2-SHA256
     if len(parts) < 4 or parts[0] != 'pbkdf2_sha256':
         return None
 
     try:
-        # Handle comma-formatted iteration counts
         iterations_str = parts[1].replace(',', '')
         iterations = int(iterations_str)
-
         salt_b64 = parts[2]
         hash_b64 = parts[3]
 
-        # Handle empty salt
         if salt_b64:
             salt = base64.b64decode(salt_b64)
         else:
@@ -198,124 +215,61 @@ def parse_hash_line(line):
             'target_hash': target_hash,
         }
     except (ValueError, base64.binascii.Error):
-        # Malformed entry, skip
         return None
 
 def generate_mangled_passwords(base_word):
-    """Generate comprehensive mangled variations."""
+    """Generate mangled variations - OPTIMIZED for fewer candidates."""
     candidates = set()
 
-    # Original
+    # Original and basic transforms
     candidates.add(base_word)
-
-    # Capitalize first letter
     candidates.add(base_word.capitalize())
-
-    # All uppercase
     candidates.add(base_word.upper())
 
-    # Common suffixes
-    suffixes = ['1', '12', '123', '456', '789', '1234', '!', '@', '#', '$', '!!']
-    years = ['2020', '2021', '2022', '2023', '2024', '2025', '2026']
+    # Common suffixes (reduced set)
+    suffixes = ['123', '456', '999', '!', '@', '#']
+    years = ['2024', '2025', '2026']
 
     for suffix in suffixes + years:
         candidates.add(base_word + suffix)
         candidates.add(base_word.capitalize() + suffix)
         candidates.add(base_word.upper() + suffix)
 
-    # Leet speak substitutions
-    leet_map = {
-        'a': ['@', '4'],
-        'e': ['3'],
-        'i': ['1', '!'],
-        'o': ['0'],
-        's': ['$', '5'],
-        't': ['7'],
-        'l': ['1'],
-    }
-
-    # Generate leet variations
-    def apply_leet(word, aggressive=False):
+    # Leet speak
+    leet_map = {'a': '@', 'e': '3', 'i': '1', 'o': '0', 's': '$'}
+    
+    def apply_leet(word):
         result = word
-        for char, replacements in leet_map.items():
-            if char in result:
-                for repl in replacements:
-                    result = result.replace(char, repl)
-                    if not aggressive:
-                        break  # Only apply first substitution per char
+        for char, repl in leet_map.items():
+            result = result.replace(char, repl)
         return result
 
     leet_word = apply_leet(base_word)
     if leet_word != base_word:
         candidates.add(leet_word)
-        candidates.add(leet_word.capitalize())
-
-        # Leet + common suffixes
-        for suffix in ['123', '456', '!', '@', '#']:
+        for suffix in ['123', '456', '!']:
             candidates.add(leet_word + suffix)
-            candidates.add(leet_word.capitalize() + suffix)
 
-    # Complex combinations: capitalize + leet + number + symbol
+    # Capitalize + leet combinations
     leet_cap = apply_leet(base_word.capitalize())
-    for num in ['123', '456', '789', '999', '2024', '2025', '2026']:
+    for num in ['123', '2024', '2025', '2026']:
         for sym in ['!', '@', '#']:
             candidates.add(leet_cap + num + sym)
             candidates.add(leet_word + num + sym)
 
     # Title case for compound words
     if len(base_word) > 6:
-        # Try capitalizing multiple positions
-        for i in range(1, len(base_word)):
-            title_case = base_word[:i].capitalize() + base_word[i:].capitalize()
-            if title_case != base_word.capitalize():
-                candidates.add(title_case)
+        mid = len(base_word) // 2
+        title_case = base_word[:mid].capitalize() + base_word[mid:].capitalize()
+        candidates.add(title_case)
 
     return list(candidates)
 
-def crack_cluster(cluster_data):
-    """
-    Crack a cluster of hashes with the same iteration count.
-    This optimization is CRITICAL for performance.
-    """
-    iterations, hash_list, password_candidates = cluster_data
-    results = []
-
-    # Build lookup table
-    hash_lookup = {}
-    for hash_info in hash_list:
-        key = (hash_info['salt'], hash_info['target_hash'])
-        hash_lookup[key] = hash_info['username']
-
-    # Get unique salts
-    salts_in_cluster = set(h['salt'] for h in hash_list)
-
-    for password in password_candidates:
-        password_bytes = password.encode('utf-8')
-
-        # Hash with each unique salt
-        for salt in salts_in_cluster:
-            computed_hash = hashlib.pbkdf2_hmac(
-                'sha256',
-                password_bytes,
-                salt,
-                iterations
-            )
-
-            key = (salt, computed_hash)
-            if key in hash_lookup:
-                username = hash_lookup[key]
-                results.append({
-                    'username': username,
-                    'password': password
-                })
-
-    return results
-
-# Read hashes file
+# Read and parse hashes
+log_progress("Reading hashes file...")
 with open('/app/hashes.txt', 'r') as f:
     hash_lines = f.readlines()
 
-# Parse and cluster by iteration count (CRITICAL optimization)
 clusters = defaultdict(list)
 parsed_count = 0
 skipped_count = 0
@@ -328,66 +282,94 @@ for line in hash_lines:
     else:
         skipped_count += 1
 
-print(f"Parsed {parsed_count} valid hashes, skipped {skipped_count} malformed entries")
-print(f"Clustered into {len(clusters)} iteration groups: {list(clusters.keys())}")
+log_progress(f"Parsed {parsed_count} valid hashes, skipped {skipped_count} malformed")
+log_progress(f"Iteration clusters: {sorted(clusters.keys())}")
 
-# Read dictionary and generate mangled passwords
+# Read dictionary and generate candidates
+log_progress("Generating password candidates...")
 with open('/app/dictionary.txt', 'r') as f:
     base_words = [line.strip() for line in f if line.strip()]
 
-all_candidates = []
+all_candidates = set()
 for word in base_words:
-    all_candidates.extend(generate_mangled_passwords(word))
+    all_candidates.update(generate_mangled_passwords(word))
 
-# Remove duplicates
-all_candidates = list(set(all_candidates))
+all_candidates = list(all_candidates)
+log_progress(f"Generated {len(all_candidates)} unique candidates from {len(base_words)} base words")
 
-print(f"Generated {len(all_candidates)} unique password candidates from {len(base_words)} base words")
-
-# Prepare cluster data for parallel processing
-cluster_tasks = [
-    (iterations, hash_list, all_candidates)
-    for iterations, hash_list in clusters.items()
-]
-
-# Crack hashes - use parallel processing only if multiple CPUs available
+# SEQUENTIAL cracking (optimized for 1 CPU)
 cracked = []
-cpu_count = max(1, os.cpu_count() or 1)
+total_hashes = sum(len(h) for h in clusters.values())
+cracked_so_far = 0
 
-if cpu_count > 1:
-    print(f"Using ProcessPoolExecutor with {cpu_count} workers")
-    with ProcessPoolExecutor(max_workers=min(cpu_count, len(cluster_tasks))) as executor:
-        futures = {
-            executor.submit(crack_cluster, task): task[0]
-            for task in cluster_tasks
-        }
+# Process clusters in order of iteration count (fastest first)
+for iterations in sorted(clusters.keys()):
+    hash_list = clusters[iterations]
+    cluster_start = time.time()
+    
+    log_progress(f"Processing cluster iterations={iterations} ({len(hash_list)} hashes)...")
+    
+    # Build lookup table
+    hash_lookup = {}
+    for hash_info in hash_list:
+        key = (hash_info['salt'], hash_info['target_hash'])
+        hash_lookup[key] = hash_info['username']
+    
+    salts_in_cluster = list(set(h['salt'] for h in hash_list))
+    cluster_cracked = 0
+    
+    for idx, password in enumerate(all_candidates):
+        password_bytes = password.encode('utf-8')
+        
+        for salt in salts_in_cluster:
+            computed_hash = hashlib.pbkdf2_hmac(
+                'sha256',
+                password_bytes,
+                salt,
+                iterations
+            )
+            
+            key = (salt, computed_hash)
+            if key in hash_lookup:
+                username = hash_lookup[key]
+                cracked.append({'username': username, 'password': password})
+                cluster_cracked += 1
+                del hash_lookup[key]  # Remove to avoid duplicates
+        
+        # Progress every 500 candidates
+        if (idx + 1) % 500 == 0:
+            elapsed = time.time() - cluster_start
+            log_progress(f"  Cluster {iterations}: {idx+1}/{len(all_candidates)} candidates, {cluster_cracked} cracked, {elapsed:.1f}s")
+    
+    cluster_elapsed = time.time() - cluster_start
+    cracked_so_far += cluster_cracked
+    log_progress(f"Cluster {iterations} done: {cluster_cracked} cracked in {cluster_elapsed:.1f}s (total: {cracked_so_far})")
 
-        for future in as_completed(futures):
-            iterations = futures[future]
-            cluster_results = future.result()
-
-            if cluster_results:
-                cracked.extend(cluster_results)
-                print(f"Cluster {iterations}: cracked {len(cluster_results)} passwords")
-else:
-    print("Single CPU detected: using sequential processing")
-    for task in cluster_tasks:
-        iterations = task[0]
-        cluster_results = crack_cluster(task)
-        if cluster_results:
-            cracked.extend(cluster_results)
-            print(f"Cluster {iterations}: cracked {len(cluster_results)} passwords")
-
-# Sort by username
+# Sort and write output
+log_progress("Writing output file...")
 cracked.sort(key=lambda x: x['username'])
 
-# Write output
 with open('/app/cracked.csv', 'w') as f:
     f.write('CRACKED_BY_TERMINUS_AGENT_2026\n')
     writer = csv.DictWriter(f, fieldnames=['username', 'password'])
     writer.writeheader()
     writer.writerows(cracked)
 
-print(f"\nSuccessfully cracked {len(cracked)} passwords")
-print(f"Output written to /app/cracked.csv")
+total_elapsed = time.time() - overall_start
+log_progress(f"COMPLETED: Cracked {len(cracked)}/{parsed_count} passwords ({100*len(cracked)/parsed_count:.1f}%)")
+log_progress(f"Total cracking time: {total_elapsed:.1f}s")
+print(f"\n[DEBUG] Output written to /app/cracked.csv")
+print(f"[DEBUG] First 5 entries: {cracked[:5]}")
 CRACKER_SCRIPT
+
+END_TIME=$(date +%s)
+TOTAL_TIME=$((END_TIME - START_TIME))
+
+echo "============================================================"
+echo "[DEBUG] Oracle solve.sh completed at $(date -Iseconds)"
+echo "[DEBUG] Total execution time: ${TOTAL_TIME} seconds"
+echo "[DEBUG] Output file size: $(ls -la /app/cracked.csv 2>/dev/null || echo 'FILE NOT FOUND')"
+echo "[DEBUG] Output file head:"
+head -10 /app/cracked.csv 2>/dev/null || echo "[DEBUG] Could not read output file"
+echo "[DEBUG] Output file line count: $(wc -l < /app/cracked.csv 2>/dev/null || echo 'N/A')"
+echo "============================================================"
