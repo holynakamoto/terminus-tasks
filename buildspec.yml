@@ -1,0 +1,61 @@
+version: 0.2
+
+# Environment variables expected:
+# - TEST_TYPE: oracle | nop | terminus_gpt | terminus_claude | consolidate
+# - RUN_NUM: (for terminus tests)
+# - DOCKER_USERNAME: Docker registry username
+# - DOCKER_TOKEN: Docker registry token
+# - OUTPUT_S3_URI: S3 URI for output artifacts
+# - CODEBUILD_SRC_DIR_helper: Path to helper scripts
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.13
+
+  pre_build:
+    commands:
+      - echo "================================================"
+      - echo "Running difficulty checks"
+      - echo "================================================"
+      - echo "Installing uv"
+      - curl -LsSf https://astral.sh/uv/install.sh | sh
+      - source $HOME/.local/bin/env
+      - echo "Installing harbor"
+      - uv pip install --system -qq harbor==0.1.25
+      - echo "Installing terminal bench for test parsing"
+      - uv pip install --system -qq terminal-bench==0.2.18
+      - echo "Installing packages with yum"
+      - yum install -y bc
+
+  build:
+    commands:
+      - mkdir -p ~/harbor_tasks/tbench-task
+      - cp -r $CODEBUILD_SRC_DIR/* ~/harbor_tasks/tbench-task/
+      - ls -R ~/harbor_tasks/tbench-task
+      - echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USERNAME" --password-stdin
+      - cd ~ && TASK=tbench-task
+      - echo '{"solvable":"","difficulty":"","agents":"","tests_results":"","text_summary":""}' | aws s3 cp - ${OUTPUT_S3_URI}
+      - |
+        set -e
+        if [ "$TEST_TYPE" = "oracle" ]; then
+          python $CODEBUILD_SRC_DIR_helper/harbor_agent_run.py --agent oracle --key oracle "$TASK"
+        elif [ "$TEST_TYPE" = "nop" ]; then
+          python $CODEBUILD_SRC_DIR_helper/harbor_agent_run.py --agent nop --key nop "$TASK"
+        elif [ "$TEST_TYPE" = "terminus_gpt" ]; then
+          python $CODEBUILD_SRC_DIR_helper/harbor_agent_run.py --agent terminus-2 --model openai/gpt-5 --run "$RUN_NUM" --key terminus-gpt5 "$TASK"
+        elif [ "$TEST_TYPE" = "terminus_claude" ]; then
+          python $CODEBUILD_SRC_DIR_helper/harbor_agent_run.py --agent terminus-2 --model anthropic/claude-sonnet-4-5-20250929 --run "$RUN_NUM" --key terminus-claude-sonnet-4-5 "$TASK"
+        elif [ "$TEST_TYPE" = "consolidate" ]; then
+          python $CODEBUILD_SRC_DIR_helper/harbor_batch_difficulty_check.py "$TASK"
+          $CODEBUILD_SRC_DIR_helper/harbor-print-agent-logs.sh jobs
+        fi
+
+  post_build:
+    commands:
+      - echo "Build completed"
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: .

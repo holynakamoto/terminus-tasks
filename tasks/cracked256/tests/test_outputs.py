@@ -11,6 +11,8 @@ import hashlib
 import base64
 
 CANARY_STRING = "CRACKED_BY_TERMINUS_AGENT_2026"
+EXPECTED_VALID_HASHES = 60  # Oracle generates exactly 60 valid PBKDF2 entries
+EXPECTED_MALFORMED_HASHES = 5  # Oracle inserts exactly 5 malformed entries
 
 
 def test_output_file_exists():
@@ -188,7 +190,8 @@ def test_hashes_file_integrity():
         # Check if it's a valid PBKDF2 entry
         if parts[0] == 'pbkdf2_sha256' and len(parts) >= 4:
             try:
-                # Try to parse as valid PBKDF2
+                # Try to parse as valid PBKDF2 (strict check for integrity)
+                # Handle comma-formatted iteration counts (e.g., "100,000")
                 iterations_str = parts[1].replace(',', '')
                 int(iterations_str)
 
@@ -206,14 +209,14 @@ def test_hashes_file_integrity():
             # Non-PBKDF2 format (bcrypt, argon2, etc.)
             malformed_count += 1
 
-    # The oracle generates exactly 60 valid PBKDF2 entries
-    assert valid_pbkdf2_count == 60, \
-        f"Expected exactly 60 valid PBKDF2 entries, found {valid_pbkdf2_count}. " \
+    # The oracle generates exactly EXPECTED_VALID_HASHES valid PBKDF2 entries
+    assert valid_pbkdf2_count == EXPECTED_VALID_HASHES, \
+        f"Expected exactly {EXPECTED_VALID_HASHES} valid PBKDF2 entries, found {valid_pbkdf2_count}. " \
         f"File may have been tampered with."
 
-    # The oracle inserts exactly 5 malformed entries
-    assert malformed_count == 5, \
-        f"Expected exactly 5 malformed entries, found {malformed_count}. " \
+    # The oracle inserts exactly EXPECTED_MALFORMED_HASHES malformed entries
+    assert malformed_count == EXPECTED_MALFORMED_HASHES, \
+        f"Expected exactly {EXPECTED_MALFORMED_HASHES} malformed entries, found {malformed_count}. " \
         f"File may have been tampered with."
 
     # Verify usernames follow expected pattern (user001-user060)
@@ -225,6 +228,12 @@ def test_hashes_file_integrity():
         f"Missing: {expected_users - valid_usernames}, " \
         f"Extra: {valid_usernames - expected_users}. " \
         f"File may have been tampered with."
+
+    # Verify a specific hash to binding the content to known ground truth (anti-cheating)
+    # user001:pbkdf2_sha256$1000$c2FsdDA=$ZuZkg83RWN1L+8O/IlkI1EMUbKeXWfHi0oUTMNucXYs=
+    known_hash = "user001:pbkdf2_sha256$1000$c2FsdDA=$ZuZkg83RWN1L+8O/IlkI1EMUbKeXWfHi0oUTMNucXYs="
+    assert any(known_hash in line for line in lines), \
+        "Hash file content mismatch. Do not modify the input hashes file."
 
 
 def test_mangling_rules_were_applied():

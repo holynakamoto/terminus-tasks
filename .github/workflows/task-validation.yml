@@ -1,0 +1,511 @@
+name: Task Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'tasks/**'
+      - '.github/workflows/task-validation.yml'
+  push:
+    branches:
+      - 'claude/**'
+      - 'main'
+    paths:
+      - 'tasks/**'
+      - '.github/workflows/task-validation.yml'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Test type to run'
+        required: true
+        type: choice
+        options:
+          - oracle
+          - nop
+          - all
+
+jobs:
+  detect-changed-tasks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tasks: ${{ steps.detect.outputs.tasks }}
+      has_tasks: ${{ steps.detect.outputs.has_tasks }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed tasks
+        id: detect
+        run: |
+          # Get changed files based on event type
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PRs, compare against the base branch
+            git fetch origin ${{ github.base_ref }}
+            CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          else
+            # For push events, compare against previous commit
+            # Use HEAD~1 if available, otherwise compare against empty tree (initial commit)
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+            else
+              CHANGED_FILES=$(git diff --name-only --diff-filter=A HEAD)
+            fi
+          fi
+
+          # Extract unique task directories from changed files
+          TASKS=$(echo "$CHANGED_FILES" | { grep '^tasks/' || true; } | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          # If only the workflow changed, default to testing cracked256 to verify CI logic
+          if ([ "$TASKS" = "[]" ] || [ -z "$TASKS" ]) && echo "$CHANGED_FILES" | grep -q 'task-validation.yml'; then
+            echo "Workflow changed, defaulting to cracked256 for validation"
+            TASKS='["cracked256"]'
+          fi
+
+          echo "tasks=$TASKS" >> $GITHUB_OUTPUT
+
+          if [ "$TASKS" = "[]" ] || [ -z "$TASKS" ]; then
+            echo "has_tasks=false" >> $GITHUB_OUTPUT
+            echo "No task changes detected"
+          else
+            echo "has_tasks=true" >> $GITHUB_OUTPUT
+            echo "Changed tasks: $TASKS"
+          fi
+
+  static-checks:
+    needs: detect-changed-tasks
+    if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv and dependencies
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          # Use full path for the first installation since GITHUB_PATH applies to subsequent steps
+          $HOME/.local/bin/uv pip install --system harbor==0.1.25 ruff
+
+      - name: Check Portkey Secret
+        env:
+          PORTKEY_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
+        run: |
+          if [ -z "$PORTKEY_API_KEY" ]; then
+            echo "❌ ERROR: PORTKEY_API_KEY secret is not set in GitHub Secrets!"
+            echo "Please add it in Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+          echo "✅ PORTKEY_API_KEY secret is configured"
+
+      - name: Run Ruff Lint
+        run: |
+          ruff check tasks/${{ matrix.task }}
+
+      - name: Run LLMaJ Check (GPT-5)
+        continue-on-error: true
+        run: |
+          export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
+          export OPENAI_BASE_URL="https://api.portkey.ai/v1"
+
+          # Create task folder for harbor check
+          mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
+          cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
+
+          # Run LLMaJ check and capture output
+          echo "Running LLMaJ check..."
+          harbor tasks check -m openai/@openai-tbench/gpt-5 --output-path $HOME/${{ matrix.task }}_llmaj.json $HOME/harbor_tasks/${{ matrix.task }} 2>&1 | tee $HOME/${{ matrix.task }}_llmaj_output.log
+
+          # Check if output file was created
+          if [ -f "$HOME/${{ matrix.task }}_llmaj.json" ]; then
+            echo "✅ LLMaJ output file created successfully"
+          else
+            echo "❌ LLMaJ output file NOT created"
+            echo "Command output saved to: $HOME/${{ matrix.task }}_llmaj_output.log"
+          fi
+
+      - name: Parse and Display LLMaJ Results
+        if: always()
+        run: |
+          echo "## 📋 LLMaJ Check Results: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "$HOME/${{ matrix.task }}_llmaj.json" ]; then
+            # Parse and display results
+            python3 .github/scripts/parse-llmaj-results.py "$HOME/${{ matrix.task }}_llmaj.json" "${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY 2>&1 || {
+              echo "⚠️ Parser failed, showing raw JSON:" >> $GITHUB_STEP_SUMMARY
+              echo '```json' >> $GITHUB_STEP_SUMMARY
+              cat "$HOME/${{ matrix.task }}_llmaj.json" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            }
+          else
+            # Check if failure was due to API usage limits
+            if [ -f "$HOME/${{ matrix.task }}_llmaj_output.log" ] && grep -q "Usage Limit.*Exceeded" "$HOME/${{ matrix.task }}_llmaj_output.log"; then
+              echo "⚠️ **API Usage Limits Reached**" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "The LLMaJ check could not complete due to Portkey API usage limits being exceeded." >> $GITHUB_STEP_SUMMARY
+              echo "This is a temporary operational issue and does not indicate a problem with the task." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ **LLMaJ check failed to produce output file**" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              # Show command output directly (no collapsible section)
+              if [ -f "$HOME/${{ matrix.task }}_llmaj_output.log" ]; then
+                echo "**Harbor tasks check output:**" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                cat "$HOME/${{ matrix.task }}_llmaj_output.log" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "⚠️ Log file not found: \$HOME/${{ matrix.task }}_llmaj_output.log" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload LLMaJ artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llmaj-${{ matrix.task }}-report
+          path: |
+            $HOME/${{ matrix.task }}_llmaj.json
+            $HOME/${{ matrix.task }}_llmaj_output.log
+          if-no-files-found: ignore
+
+  validate-oracle:
+    needs: [detect-changed-tasks, static-checks]
+    if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.task }}-${{ hashFiles(format('tasks/{0}/environment/Dockerfile', matrix.task)) }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ matrix.task }}-
+            ${{ runner.os }}-buildx-
+
+      - name: Prepare test environment
+        run: |
+          mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
+          cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
+          ls -R $HOME/harbor_tasks/${{ matrix.task }}
+
+      - name: Run Oracle test
+        id: oracle_test
+        run: |
+          bash .github/scripts/test-with-oracle.sh ${{ matrix.task }}
+        continue-on-error: true
+
+      - name: Check Oracle test result
+        run: |
+          if [ "${{ steps.oracle_test.outcome }}" = "success" ]; then
+            echo "✅ Oracle test passed for ${{ matrix.task }}"
+            exit 0
+          else
+            echo "❌ Oracle test failed for ${{ matrix.task }}"
+            exit 1
+          fi
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oracle-${{ matrix.task }}-logs
+          path: |
+            ${{ runner.temp }}/jobs/**
+            $HOME/jobs/**
+            $HOME/harbor_tasks/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  validate-nop:
+    needs: [detect-changed-tasks, static-checks]
+    if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.task }}-${{ hashFiles(format('tasks/{0}/environment/Dockerfile', matrix.task)) }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ matrix.task }}-
+            ${{ runner.os }}-buildx-
+
+      - name: Prepare test environment
+        run: |
+          mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
+          cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
+
+      - name: Run NOP test
+        id: nop_test
+        run: |
+          bash .github/scripts/test-with-nop.sh ${{ matrix.task }}
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nop-${{ matrix.task }}-logs
+          path: |
+            ${{ runner.temp }}/jobs/**
+            $HOME/jobs/**
+            $HOME/harbor_tasks/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  validate-difficulty:
+    needs: [detect-changed-tasks, validate-oracle, validate-nop]
+    if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      matrix:
+        task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install uv and harbor
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          $HOME/.local/bin/uv pip install --system harbor==0.1.25 terminal-bench==0.2.18
+
+      - name: Check Portkey Secret
+        env:
+          PORTKEY_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
+        run: |
+          if [ -z "$PORTKEY_API_KEY" ]; then
+            echo "❌ ERROR: PORTKEY_API_KEY secret is not set in GitHub Secrets!"
+            exit 1
+          fi
+          echo "✅ PORTKEY_API_KEY secret is configured"
+
+      - name: Prepare task for harbor
+        run: |
+          mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
+          cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
+
+      - name: Run GPT-5 Difficulty Eval
+        run: |
+          set -euo pipefail
+          export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
+          export OPENAI_BASE_URL="https://api.portkey.ai/v1"
+
+          # Run 5 times to establish a reliable pass rate
+          # Exit on first failure to surface errors immediately
+          for i in {1..5}; do
+            echo "GPT-5 run $i/5..."
+            harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p $HOME/harbor_tasks/${{ matrix.task }}
+          done
+
+      - name: Run Claude Sonnet 4.5 Difficulty Eval
+        run: |
+          set -euo pipefail
+          export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
+          export OPENAI_BASE_URL="https://api.portkey.ai/v1"
+
+          # Run 5 times to establish a reliable pass rate
+          # Exit on first failure to surface errors immediately
+          for i in {1..5}; do
+            echo "Claude run $i/5..."
+            harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
+          done
+
+      - name: Calculate and Display Difficulty Rating
+        if: always()
+        run: |
+          echo "Calculating difficulty rating for ${{ matrix.task }}..."
+          echo "## 📊 Difficulty Evaluation: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Find the jobs directory (try multiple locations)
+          JOBS_DIR=""
+          if [ -d "$HOME/harbor_tasks/${{ matrix.task }}/jobs" ]; then
+            JOBS_DIR="$HOME/harbor_tasks/${{ matrix.task }}/jobs"
+          elif [ -d "$HOME/jobs" ]; then
+            JOBS_DIR="$HOME/jobs"
+          elif [ -d "jobs" ]; then
+            JOBS_DIR="jobs"
+          else
+            # Try to find any jobs directory
+            FOUND_JOBS=$(find $HOME -type d -name "jobs" 2>/dev/null | head -1)
+            if [ -n "$FOUND_JOBS" ]; then
+              JOBS_DIR="$FOUND_JOBS"
+            fi
+          fi
+
+          if [ -z "$JOBS_DIR" ] || [ ! -d "$JOBS_DIR" ]; then
+            echo "⚠️ No jobs directory found. Difficulty calculation skipped." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          echo "Found jobs directory: $JOBS_DIR"
+
+          # Count result files
+          RESULT_COUNT=$(find "$JOBS_DIR" -name "result.json" -type f 2>/dev/null | wc -l)
+          echo "Found $RESULT_COUNT result.json files"
+
+          if [ "$RESULT_COUNT" -eq 0 ]; then
+            echo "⚠️ No result.json files found in jobs directory" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          # Run the difficulty calculation script
+          python3 .github/scripts/calculate-difficulty.py "${{ matrix.task }}" "$JOBS_DIR" >> $GITHUB_STEP_SUMMARY 2>&1 || {
+            echo "⚠️ Failed to calculate difficulty rating" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Jobs directory: $JOBS_DIR" >> $GITHUB_STEP_SUMMARY
+            echo "Result files found: $RESULT_COUNT" >> $GITHUB_STEP_SUMMARY
+          }
+
+          # If all runs failed with 0 episodes, show a sample log for debugging
+          ZERO_EPISODE_COUNT=$(find "$JOBS_DIR" -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | wc -l)
+          if [ "$ZERO_EPISODE_COUNT" -gt 0 ] && [ "$RESULT_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🐛 Critical: All Agents Failing to Start" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Issue**: Found $ZERO_EPISODE_COUNT/$RESULT_COUNT runs with 0 episodes (agents failed to start)." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This means the agents aren't even initializing - likely due to:" >> $GITHUB_STEP_SUMMARY
+            echo "- Docker build failure" >> $GITHUB_STEP_SUMMARY
+            echo "- Environment setup error" >> $GITHUB_STEP_SUMMARY
+            echo "- Task configuration issue" >> $GITHUB_STEP_SUMMARY
+            echo "- API/authentication problem" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Find a sample result.json with 0 episodes
+            SAMPLE_RESULT=$(find "$JOBS_DIR" -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | head -1)
+            if [ -n "$SAMPLE_RESULT" ]; then
+              echo "**Sample Failed Run Details:**" >> $GITHUB_STEP_SUMMARY
+              echo '```json' >> $GITHUB_STEP_SUMMARY
+              cat "$SAMPLE_RESULT" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload difficulty results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: difficulty-${{ matrix.task }}-results
+          path: |
+            $HOME/jobs/**
+            $HOME/harbor_tasks/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  summary:
+    needs: [static-checks, validate-oracle, validate-nop, validate-difficulty]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Summary
+        run: |
+          echo "## Task Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.validate-oracle.result }}" = "success" ]; then
+            echo "✅ Oracle validation passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Oracle validation failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.validate-nop.result }}" = "success" ]; then
+            echo "✅ NOP validation passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ NOP validation failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.static-checks.result }}" = "success" ]; then
+            echo "✅ Static checks (Ruff & LLMaJ) passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Static checks failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.validate-difficulty.result }}" = "success" ]; then
+            echo "✅ Difficulty evaluations completed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Difficulty evaluations failed or timed out" >> $GITHUB_STEP_SUMMARY
+          fi
