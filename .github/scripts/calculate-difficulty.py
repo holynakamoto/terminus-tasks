@@ -67,21 +67,17 @@ def determine_difficulty(pass_rate: float, results: List[Dict] = None) -> str:
     """
     Determine difficulty rating based on pass rate.
 
-    Returns one of: "broken", "too_hard", "hard", "medium", "easy", "too_easy"
+    Returns one of: "too_hard", "hard", "medium", "easy", "too_easy"
 
-    - Broken: All agents fail to start (0 episodes)
     - Too Hard: < 20% pass rate (NOT accepted)
     - Hard: 20-40% pass rate (accepted)
     - Medium: 40-60% pass rate (accepted)
     - Easy: 60-80% pass rate (accepted)
     - Too Easy: >= 80% pass rate (NOT accepted)
-    """
-    # Check if all agents failed to start (0 episodes)
-    if results:
-        all_zero_episodes = all(r["episodes"] == 0 for r in results)
-        if all_zero_episodes:
-            return "broken"
 
+    Note: Broken state (all agents fail to start) should be checked
+    separately before calling this function.
+    """
     if pass_rate >= 80:
         return "too_easy"
     elif pass_rate >= 60:
@@ -131,20 +127,34 @@ def format_results_for_github(
         output.append("- ⚠️ No results found")
     output.append("")
 
+    # Check if either model is completely broken (all agents failed to start)
+    gpt5_broken = gpt5_results and all(r["episodes"] == 0 for r in gpt5_results)
+    claude_broken = claude_results and all(r["episodes"] == 0 for r in claude_results)
+
     # Determine difficulty based on BETTER performing model
     best_pass_rate = max(gpt5_rate, claude_rate)
 
-    # Combine all results to check for broken state
-    all_results = gpt5_results + claude_results
-    difficulty = determine_difficulty(best_pass_rate, all_results)
+    # Check for broken state first (either model completely broken)
+    if gpt5_broken or claude_broken:
+        difficulty = "broken"
+    else:
+        difficulty = determine_difficulty(best_pass_rate, None)
 
     output.append("### 🎯 Difficulty Rating")
     output.append(f"- **Best Pass Rate**: {best_pass_rate:.1f}% ({'GPT-5' if gpt5_rate >= claude_rate else 'Claude Sonnet 4.5'})")
 
     if difficulty == "broken":
-        output.append(f"- **Rating**: ❌ **BROKEN** - All agents failed to start")
+        # Specify which model(s) are broken
+        broken_models = []
+        if gpt5_broken:
+            broken_models.append("GPT-5")
+        if claude_broken:
+            broken_models.append("Claude Sonnet 4.5")
+        broken_str = " and ".join(broken_models)
+
+        output.append(f"- **Rating**: ❌ **BROKEN** - {broken_str} agents failed to start")
         output.append("")
-        output.append("🚨 **CRITICAL ISSUE**: All agent runs failed with 0 episodes (agents never started).")
+        output.append(f"🚨 **CRITICAL ISSUE**: All {broken_str} agent runs failed with 0 episodes (agents never started).")
         output.append("")
         output.append("**This means the task is broken or has critical issues:**")
         output.append("  - Docker build failure")
@@ -267,13 +277,20 @@ def main():
     gpt5_passed, gpt5_total, gpt5_rate = calculate_pass_rate(gpt5_results)
     claude_passed, claude_total, claude_rate = calculate_pass_rate(claude_results)
     best_pass_rate = max(gpt5_rate, claude_rate)
-    all_results = gpt5_results + claude_results
-    difficulty = determine_difficulty(best_pass_rate, all_results)
+
+    # Check if either model is completely broken
+    gpt5_broken = gpt5_results and all(r["episodes"] == 0 for r in gpt5_results)
+    claude_broken = claude_results and all(r["episodes"] == 0 for r in claude_results)
+
+    if gpt5_broken or claude_broken:
+        difficulty = "broken"
+    else:
+        difficulty = determine_difficulty(best_pass_rate, None)
 
     if difficulty in ["broken", "too_hard", "too_easy"]:
         print("", file=sys.stderr)
         if difficulty == "broken":
-            print("❌ ERROR: Task is BROKEN - all agents failed to start (0 episodes)", file=sys.stderr)
+            print("❌ ERROR: Task is BROKEN - at least one model's agents all failed to start (0 episodes)", file=sys.stderr)
         elif difficulty == "too_hard":
             print("❌ ERROR: Task is TOO HARD (pass rate < 20%)", file=sys.stderr)
         elif difficulty == "too_easy":
