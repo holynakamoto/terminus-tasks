@@ -67,15 +67,19 @@ def determine_difficulty(pass_rate: float, results: List[Dict] = None) -> str:
     """
     Determine difficulty rating based on pass rate.
 
-    - Hard: 20-40%
-    - Medium: 40-60%
-    - Easy: 60-80%
-    - Invalid: >= 80% (task is too easy) OR < 20% (task is too hard/broken)
+    Returns one of: "broken", "too_hard", "hard", "medium", "easy", "too_easy"
+
+    - Broken: All agents fail to start (0 episodes)
+    - Too Hard: < 20% pass rate (NOT accepted)
+    - Hard: 20-40% pass rate (accepted)
+    - Medium: 40-60% pass rate (accepted)
+    - Easy: 60-80% pass rate (accepted)
+    - Too Easy: >= 80% pass rate (NOT accepted)
     """
     # Check if all agents failed to start (0 episodes)
     if results:
         all_zero_episodes = all(r["episodes"] == 0 for r in results)
-        if all_zero_episodes and len(results) > 0:
+        if all_zero_episodes:
             return "broken"
 
     if pass_rate >= 80:
