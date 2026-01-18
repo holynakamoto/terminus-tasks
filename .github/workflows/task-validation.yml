@@ -152,19 +152,27 @@ jobs:
               echo '```' >> $GITHUB_STEP_SUMMARY
             }
           else
-            echo "❌ **LLMaJ check failed to produce output file**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-
-            # Show command output directly (no collapsible section)
-            if [ -f "$HOME/${{ matrix.task }}_llmaj_output.log" ]; then
-              echo "**Harbor tasks check output:**" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              cat "$HOME/${{ matrix.task }}_llmaj_output.log" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
+            # Check if failure was due to API usage limits
+            if [ -f "$HOME/${{ matrix.task }}_llmaj_output.log" ] && grep -q "Usage Limit.*Exceeded" "$HOME/${{ matrix.task }}_llmaj_output.log"; then
+              echo "⚠️ **API Usage Limits Reached**" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
+              echo "The LLMaJ check could not complete due to Portkey API usage limits being exceeded." >> $GITHUB_STEP_SUMMARY
+              echo "This is a temporary operational issue and does not indicate a problem with the task." >> $GITHUB_STEP_SUMMARY
             else
-              echo "⚠️ Log file not found: \$HOME/${{ matrix.task }}_llmaj_output.log" >> $GITHUB_STEP_SUMMARY
+              echo "❌ **LLMaJ check failed to produce output file**" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
+
+              # Show command output directly (no collapsible section)
+              if [ -f "$HOME/${{ matrix.task }}_llmaj_output.log" ]; then
+                echo "**Harbor tasks check output:**" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                cat "$HOME/${{ matrix.task }}_llmaj_output.log" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "⚠️ Log file not found: \$HOME/${{ matrix.task }}_llmaj_output.log" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           fi
 
