@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """
+⚠️ TEST DATA GENERATION ONLY - DO NOT USE IN PRODUCTION
+
 Generate test data for the cracked256 password cracking task.
 This runs on container startup to create hashes.txt and dictionary.txt for agents to work with.
 """
 import hashlib
 import base64
 import random
+
+# Constants matching test expectations
+EXPECTED_VALID_HASHES = 60  # Must match test_outputs.py
+EXPECTED_MALFORMED_HASHES = 5  # Must match test_outputs.py
+EXTENDED_PATTERN_COUNT = 75  # Generate extra patterns, use first 60
 
 # Base dictionary words
 base_words = [
@@ -59,9 +66,9 @@ password_patterns = [
     ('user021', 'princess', 'PRINCESS123'),
 ]
 
-# Extend to 70+ users with variations
+# Extend to EXTENDED_PATTERN_COUNT users with variations
 random.seed(42)  # Deterministic for reproducibility
-for i in range(22, 75):
+for i in range(22, EXTENDED_PATTERN_COUNT):
     base = random.choice(base_words)
     transforms = random.choice([
         base,
@@ -72,25 +79,20 @@ for i in range(22, 75):
     ])
     password_patterns.append((f'user{i:03d}', base, transforms))
 
-# OPTIMIZED FOR 1 CPU: Lower iteration counts
-# Max 50000 instead of 500000 (10x reduction)
-iteration_counts = [
-    1000, 1000, 1000, 1000, 1000,      # Low (5)
-    5000, 5000, 5000, 5000, 5000,      # Low-medium (5)
-    10000, 10000, 10000, 10000, 10000, # Medium (5)
-    20000, 20000, 20000, 20000, 20000, # Medium-high (5)
-    50000, 50000,                       # High (2) - max iteration count
-]
+# OPTIMIZED FOR 1 CPU: Lower iteration counts (max 50000 instead of 500000)
+# Production systems should use 600,000+ iterations (OWASP 2023 recommendation)
+# Even distribution across EXPECTED_VALID_HASHES (60) hashes: 12 of each count
+iteration_counts = [1000] * 12 + [5000] * 12 + [10000] * 12 + [20000] * 12 + [50000] * 12
 
 hashes = []
 
-print(f"Generating {len(password_patterns[:60])} password hashes...")
+print(f"Generating {EXPECTED_VALID_HASHES} password hashes...")
 
 # Generate valid hashes
-for i, (username, base_word, password) in enumerate(password_patterns[:60]):
-    iterations = iteration_counts[i % len(iteration_counts)]
+for i, (username, base_word, password) in enumerate(password_patterns[:EXPECTED_VALID_HASHES]):
+    iterations = iteration_counts[i]  # Direct indexing - now we have exactly 60 values
 
-    # Some entries have empty salts (edge case)
+    # Some entries have empty salts (edge case) - creates 4 empty salts at indices 0, 17, 34, 51
     if i % 17 == 0:
         salt = b''
         salt_b64 = ''
@@ -105,23 +107,17 @@ for i, (username, base_word, password) in enumerate(password_patterns[:60]):
     hash_line = f"{username}:pbkdf2_sha256${iterations}${salt_b64}${hash_b64}"
     hashes.append(hash_line)
 
-# Add malformed entries (debugging traps)
-# malformed1: Use invalid iteration count (with 'x') to ensure it's not counted as valid
-malformed1 = "baduser1:pbkdf2_sha256$100,000x$c2FsdA$aGFzaA=="
-hashes.insert(10, malformed1)
+# Add malformed entries (debugging traps) - inserted in reverse order to avoid index shifting
+malformed_entries = [
+    (55, "baduser4:bcrypt$12$c2FsdDEyMzQ=$aGFzaGRhdGE="),  # Wrong algorithm
+    (40, "baduser3:pbkdf2_sha256$50000$c2FsdA!!!$dGVzdGhhc2g="),  # Invalid base64
+    (30, "baduser5:argon2$m=65536,t=3,p=4$c2FsdA==$aGFzaA=="),  # Wrong algorithm
+    (25, "baduser2:pbkdf2_sha256$10000$c2FsdA=="),  # Missing hash component
+    (10, "baduser1:pbkdf2_sha256$100,000x$c2FsdA$aGFzaA=="),  # Invalid iteration count
+]
 
-malformed2 = "baduser2:pbkdf2_sha256$10000$c2FsdA=="
-hashes.insert(25, malformed2)
-
-# malformed3: Use invalid base64 character (!) to ensure it's not counted as valid
-malformed3 = "baduser3:pbkdf2_sha256$50000$c2FsdA!!!$dGVzdGhhc2g="
-hashes.insert(40, malformed3)
-
-malformed4 = "baduser4:bcrypt$12$c2FsdDEyMzQ=$aGFzaGRhdGE="
-hashes.insert(55, malformed4)
-
-malformed5 = "baduser5:argon2$m=65536,t=3,p=4$c2FsdA==$aGFzaA=="
-hashes.insert(30, malformed5)
+for position, entry in malformed_entries:
+    hashes.insert(position, entry)
 
 # Write hashes to file
 with open('/app/hashes.txt', 'w') as f:
