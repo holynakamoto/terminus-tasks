@@ -3,10 +3,12 @@
 Calculate difficulty rating based on evaluation results from GPT-5 and Claude Sonnet 4.5.
 
 Difficulty Guidelines:
-- Hard: < 40% pass rate
-- Medium: < 60% pass rate
-- Easy: < 80% pass rate
-- Tasks with > 80% pass rate are NOT accepted
+- Hard: 20-40% pass rate
+- Medium: 40-60% pass rate
+- Easy: 60-80% pass rate
+- Too Easy: >= 80% pass rate (NOT accepted)
+- Too Hard: < 20% pass rate (NOT accepted)
+- Broken: All agents fail to start with 0 episodes (NOT accepted)
 
 The difficulty is based on whichever model performs BETTER (higher pass rate).
 """
@@ -61,23 +63,31 @@ def calculate_pass_rate(results: List[Dict]) -> Tuple[int, int, float]:
     return passed, total, pass_rate
 
 
-def determine_difficulty(pass_rate: float) -> str:
+def determine_difficulty(pass_rate: float, results: List[Dict] = None) -> str:
     """
     Determine difficulty rating based on pass rate.
 
-    - Hard: < 40%
-    - Medium: < 60%
-    - Easy: < 80%
-    - Invalid: >= 80% (task is too easy)
+    - Hard: 20-40%
+    - Medium: 40-60%
+    - Easy: 60-80%
+    - Invalid: >= 80% (task is too easy) OR < 20% (task is too hard/broken)
     """
+    # Check if all agents failed to start (0 episodes)
+    if results:
+        all_zero_episodes = all(r["episodes"] == 0 for r in results)
+        if all_zero_episodes and len(results) > 0:
+            return "broken"
+
     if pass_rate >= 80:
-        return "invalid"
+        return "too_easy"
     elif pass_rate >= 60:
         return "easy"
     elif pass_rate >= 40:
         return "medium"
-    else:
+    elif pass_rate >= 20:
         return "hard"
+    else:
+        return "too_hard"
 
 
 def format_results_for_github(
@@ -119,23 +129,51 @@ def format_results_for_github(
 
     # Determine difficulty based on BETTER performing model
     best_pass_rate = max(gpt5_rate, claude_rate)
-    difficulty = determine_difficulty(best_pass_rate)
+
+    # Combine all results to check for broken state
+    all_results = gpt5_results + claude_results
+    difficulty = determine_difficulty(best_pass_rate, all_results)
 
     output.append("### 🎯 Difficulty Rating")
     output.append(f"- **Best Pass Rate**: {best_pass_rate:.1f}% ({'GPT-5' if gpt5_rate >= claude_rate else 'Claude Sonnet 4.5'})")
 
-    if difficulty == "invalid":
-        output.append(f"- **Rating**: ❌ **INVALID** (>{80}% - Task is too easy)")
+    if difficulty == "broken":
+        output.append(f"- **Rating**: ❌ **BROKEN** - All agents failed to start")
+        output.append("")
+        output.append("🚨 **CRITICAL ISSUE**: All agent runs failed with 0 episodes (agents never started).")
+        output.append("")
+        output.append("**This means the task is broken or has critical issues:**")
+        output.append("  - Docker build failure")
+        output.append("  - Environment setup error")
+        output.append("  - Task configuration problem")
+        output.append("  - Invalid instruction format")
+        output.append("  - Missing required files")
+        output.append("")
+        output.append("⚠️ **ACTION REQUIRED**: Fix the task before it can be evaluated for difficulty.")
+    elif difficulty == "too_hard":
+        output.append(f"- **Rating**: ❌ **TOO HARD** (<20% - Task is impossibly difficult)")
+        output.append("")
+        output.append("🚨 **FAILED**: This task has a pass rate below 20% and is too difficult to be useful.")
+        output.append("")
+        output.append("**Why this is a problem:**")
+        output.append("  - Tasks with <20% pass rate are likely unsolvable or too ambiguous")
+        output.append("  - Even 'HARD' tasks should be solvable by capable agents 20-40% of the time")
+        output.append("  - Very low pass rates indicate unclear instructions or impossible requirements")
+        output.append("")
+        output.append("⚠️ **ACTION REQUIRED**: Simplify the task or clarify instructions to achieve at least 20% pass rate.")
+    elif difficulty == "too_easy":
+        output.append(f"- **Rating**: ❌ **TOO EASY** (≥80% - Task is too simple)")
         output.append("")
         output.append("⚠️ **ACTION REQUIRED**: This task has a pass rate above 80% and will NOT be accepted.")
-        output.append("Please increase the difficulty by:")
+        output.append("")
+        output.append("**Please increase the difficulty by:**")
         output.append("  - Adding more steps")
         output.append("  - Including hidden requirements")
         output.append("  - Using more niche knowledge")
         output.append("  - Creating more complex debugging scenarios")
         output.append("  - Adding more edge cases")
     elif difficulty == "hard":
-        output.append(f"- **Rating**: 🔴 **HARD** (<40%)")
+        output.append(f"- **Rating**: 🔴 **HARD** (20-40%)")
         output.append("")
         output.append("✅ This task meets the HARD difficulty criteria.")
     elif difficulty == "medium":
@@ -151,10 +189,12 @@ def format_results_for_github(
 
     # Difficulty Guidelines Reference
     output.append("### 📖 Difficulty Guidelines")
-    output.append("- **Hard**: < 40% pass rate")
+    output.append("- **Hard**: 20-40% pass rate")
     output.append("- **Medium**: 40-60% pass rate")
     output.append("- **Easy**: 60-80% pass rate")
-    output.append("- **Invalid**: ≥ 80% pass rate (NOT accepted)")
+    output.append("- **Too Easy**: ≥ 80% pass rate (NOT accepted)")
+    output.append("- **Too Hard**: < 20% pass rate (NOT accepted)")
+    output.append("- **Broken**: All agents fail to start (0 episodes)")
     output.append("")
     output.append("_Difficulty is based on whichever model performs better._")
 
@@ -219,14 +259,21 @@ def main():
     formatted_output = format_results_for_github(gpt5_results, claude_results, task_name)
     print(formatted_output)
 
-    # Check if task is invalid (too easy)
+    # Check if task is invalid
     gpt5_passed, gpt5_total, gpt5_rate = calculate_pass_rate(gpt5_results)
     claude_passed, claude_total, claude_rate = calculate_pass_rate(claude_results)
     best_pass_rate = max(gpt5_rate, claude_rate)
+    all_results = gpt5_results + claude_results
+    difficulty = determine_difficulty(best_pass_rate, all_results)
 
-    if best_pass_rate >= 80:
+    if difficulty in ["broken", "too_hard", "too_easy"]:
         print("", file=sys.stderr)
-        print("❌ ERROR: Task difficulty is INVALID (pass rate >= 80%)", file=sys.stderr)
+        if difficulty == "broken":
+            print("❌ ERROR: Task is BROKEN - all agents failed to start (0 episodes)", file=sys.stderr)
+        elif difficulty == "too_hard":
+            print("❌ ERROR: Task is TOO HARD (pass rate < 20%)", file=sys.stderr)
+        elif difficulty == "too_easy":
+            print("❌ ERROR: Task is TOO EASY (pass rate >= 80%)", file=sys.stderr)
         sys.exit(1)
     else:
         sys.exit(0)
