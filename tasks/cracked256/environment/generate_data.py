@@ -3,7 +3,8 @@
 ⚠️ TEST DATA GENERATION ONLY - DO NOT USE IN PRODUCTION
 
 Generate test data for the cracked256 password cracking task.
-This runs on container startup to create hashes.txt and dictionary.txt for agents to work with.
+This runs at Docker image build time (via RUN in Dockerfile) and creates hashes.txt
+and dictionary.txt that are baked into the image for agents to work with.
 """
 import hashlib
 import base64
