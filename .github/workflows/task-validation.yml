@@ -56,7 +56,7 @@ jobs:
           fi
 
           # Extract unique task directories from changed files
-          TASKS=$(echo "$CHANGED_FILES" | grep '^tasks/' || true | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          TASKS=$(echo "$CHANGED_FILES" | { grep '^tasks/' || true; } | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
 
           # If only the workflow changed, default to testing cracked256 to verify CI logic
           if ([ "$TASKS" = "[]" ] || [ -z "$TASKS" ]) && echo "$CHANGED_FILES" | grep -q 'task-validation.yml'; then
