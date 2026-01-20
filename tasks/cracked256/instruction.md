@@ -32,7 +32,7 @@ The dictionary file `/app/dictionary.txt` contains base password candidates (one
 
 3. **Optimize processing**:
    - Group hashes by iteration count for batch processing
-   - Process low iteration counts first (1000, 5000) before high counts (20000)
+   - Process low iteration counts first (1000, 5000) before high counts (10000)
    - This significantly reduces computation time
 
 4. **Output format** - Write to `/app/cracked.csv`:
@@ -52,7 +52,7 @@ The dictionary file `/app/dictionary.txt` contains base password candidates (one
 - Parse the hash format carefully: `pbkdf2_sha256$iterations$salt$hash`
 - Decode base64 salt and hash using `base64.b64decode()`
 - Empty salts are possible (handle `salt_b64 = ''`)
-- Target at least 30% crack rate (9+ out of 30 valid hashes)
+- Target at least 30% crack rate (5+ out of 15 valid hashes)
 - At least 40% of cracked passwords must demonstrate combined transformations (e.g., `P@ssw0rd123!`)
 
 ## Constraints

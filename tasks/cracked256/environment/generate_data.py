@@ -15,9 +15,9 @@ import base64
 import random
 
 # Constants matching test expectations
-EXPECTED_VALID_HASHES = 30  # Must match test_outputs.py (reduced for faster evals)
+EXPECTED_VALID_HASHES = 15  # Must match test_outputs.py (reduced for sub-30min pipeline)
 EXPECTED_MALFORMED_HASHES = 5  # Must match test_outputs.py
-EXTENDED_PATTERN_COUNT = 40  # Generate extra patterns, use first 30
+EXTENDED_PATTERN_COUNT = 25  # Generate extra patterns, use first 15
 
 # Base dictionary words (reduced to 12 for faster eval times)
 base_words = [
@@ -83,16 +83,15 @@ for i in range(len(password_patterns) + 1, EXTENDED_PATTERN_COUNT + 1):
     ])
     password_patterns.append((f'user{i:03d}', base, transforms))
 
-# OPTIMIZED FOR FAST EVALS: Lower iteration counts (max 20000 instead of 500000)
+# OPTIMIZED FOR SUB-30MIN PIPELINE: Lower iteration counts (max 10000 instead of 500000)
 # Production systems should use 600,000+ iterations (OWASP 2023 recommendation)
-# Distribution: 5 at each count (1k, 5k, 10k, 20k) = 20 values total
-# CRITICAL: Uses modulo (i % 20) to cycle through counts for 30 hashes
+# Distribution: 5 at each count (1k, 5k, 10k) = 15 values total
+# CRITICAL: Uses modulo (i % 15) to cycle through counts for 15 hashes
 # This MUST match oracle's approach - even distribution would create wrong test data
 iteration_counts = [
     1000, 1000, 1000, 1000, 1000,      # Low (5)
-    5000, 5000, 5000, 5000, 5000,      # Low-medium (5)
-    10000, 10000, 10000, 10000, 10000, # Medium (5)
-    20000, 20000, 20000, 20000, 20000, # High (5) - max iteration count
+    5000, 5000, 5000, 5000, 5000,      # Medium (5)
+    10000, 10000, 10000, 10000, 10000, # High (5) - max iteration count
 ]
 
 hashes = []
