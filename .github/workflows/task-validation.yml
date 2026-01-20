@@ -120,6 +120,9 @@ jobs:
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
+          # Suppress LiteLLM model info lookup warnings to reduce overhead
+          export LITELLM_LOG="ERROR"
+
           # Create task folder for harbor check
           mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
           cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
@@ -364,6 +367,9 @@ jobs:
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
+          # Suppress LiteLLM model info lookup warnings to reduce overhead
+          export LITELLM_LOG="ERROR"
+
           # Run 5 times to establish a reliable pass rate
           # Exit on first failure to surface errors immediately
           for i in {1..5}; do
@@ -376,6 +382,9 @@ jobs:
           set -euo pipefail
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
+
+          # Suppress LiteLLM model info lookup warnings to reduce overhead
+          export LITELLM_LOG="ERROR"
 
           # Run 5 times to establish a reliable pass rate
           # Exit on first failure to surface errors immediately
