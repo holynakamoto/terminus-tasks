@@ -8,8 +8,7 @@ on:
       - '.github/workflows/task-validation.yml'
   push:
     branches:
-      - 'claude/**'
-      - 'main'
+      - 'main'  # Only run on main branch pushes (post-merge validation)
     paths:
       - 'tasks/**'
       - '.github/workflows/task-validation.yml'
