@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-⚠️ TEST DATA GENERATION ONLY - DO NOT USE IN PRODUCTION
+⚠️ TEST DATA GENERATION ONLY - DO NOT USE IN PRODUCTION ⚠️
+
+This script generates INTENTIONALLY WEAK test data for educational purposes.
+The iteration counts (max 50,000) are 12x LESS than OWASP 2023 recommendations
+(600,000+ for PBKDF2-SHA256). Production systems MUST use secure parameters.
 
 Generate test data for the cracked256 password cracking task.
 This runs at Docker image build time (via RUN in Dockerfile) and creates hashes.txt
@@ -83,7 +87,8 @@ for i in range(22, EXTENDED_PATTERN_COUNT):
 # OPTIMIZED FOR 1 CPU: Lower iteration counts (max 50000 instead of 500000)
 # Production systems should use 600,000+ iterations (OWASP 2023 recommendation)
 # Distribution: 5 at each count (1k, 5k, 10k, 20k) + 2 at 50k = 22 values total
-# Uses modulo for 60 hashes to match oracle solution expectations
+# CRITICAL: Uses modulo (i % 22) to cycle through counts for 60 hashes
+# This MUST match oracle's approach - even distribution would create wrong test data
 iteration_counts = [
     1000, 1000, 1000, 1000, 1000,      # Low (5)
     5000, 5000, 5000, 5000, 5000,      # Low-medium (5)
@@ -115,7 +120,7 @@ for i, (username, base_word, password) in enumerate(password_patterns[:EXPECTED_
     hash_line = f"{username}:pbkdf2_sha256${iterations}${salt_b64}${hash_b64}"
     hashes.append(hash_line)
 
-# Add malformed entries (debugging traps) - inserted in reverse order to avoid index shifting
+# Add malformed entries (debugging traps) - inserted at specific positions to test error handling
 malformed_entries = [
     (55, "baduser4:bcrypt$12$c2FsdDEyMzQ=$aGFzaGRhdGE="),  # Wrong algorithm
     (40, "baduser3:pbkdf2_sha256$50000$c2FsdA!!!$dGVzdGhhc2g="),  # Invalid base64

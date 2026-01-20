@@ -23,11 +23,12 @@ The dictionary file `/app/dictionary.txt` contains base password candidates (one
 1. **Parse hashes** - Read `/app/hashes.txt` and extract valid PBKDF2 entries. Skip malformed entries.
 
 2. **Apply transformations** - Generate password candidates by modifying dictionary words:
-   - Capitalization (Password, PASSWORD)
-   - Leet speak (p@ssw0rd, @dm1n)
-   - Numeric suffixes (password123, admin2024)
-   - Symbol suffixes (hello!, welcome@)
-   - Combinations (P@ssw0rd123!, M@st3r2024#)
+   - Capitalization: `password` → `Password`, `PASSWORD`
+   - Leet speak: `password` → `p@ssw0rd`, `admin` → `@dm1n`
+   - Numeric suffixes: `password` → `password123`, `admin2024`
+   - Symbol suffixes: `hello` → `hello!`, `welcome@`
+   - **Combined transformations** (most common): `password` → `P@ssw0rd123!`, `admin` → `@dm1n2024`, `master` → `M@st3r!`
+     - Example: Start with `password`, capitalize → `Password`, apply leet speak → `P@ssw0rd`, add number → `P@ssw0rd123`, add symbol → `P@ssw0rd123!`
 
 3. **Optimize processing**:
    - Group hashes by iteration count for batch processing

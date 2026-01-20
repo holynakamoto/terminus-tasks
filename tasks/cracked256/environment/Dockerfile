@@ -5,6 +5,7 @@ FROM python:3.11.11-slim
 WORKDIR /app
 
 # Copy data generation script and run at build time to bake data into image
+# Note: Script kept in image (~4KB) for debugging/reference - can add cleanup if size matters
 COPY generate_data.py /app/generate_data.py
 RUN python3 /app/generate_data.py
 
