@@ -15,15 +15,14 @@ import base64
 import random
 
 # Constants matching test expectations
-EXPECTED_VALID_HASHES = 60  # Must match test_outputs.py
+EXPECTED_VALID_HASHES = 30  # Must match test_outputs.py (reduced for faster evals)
 EXPECTED_MALFORMED_HASHES = 5  # Must match test_outputs.py
-EXTENDED_PATTERN_COUNT = 75  # Generate extra patterns, use first 60
+EXTENDED_PATTERN_COUNT = 40  # Generate extra patterns, use first 30
 
-# Base dictionary words
+# Base dictionary words (reduced to 12 for faster eval times)
 base_words = [
-    'password', 'admin', 'secret', 'test', 'hello', 'welcome', 'master',
-    'summer', 'dragon', 'monkey', 'letmein', 'football', 'iloveyou',
-    'starwars', 'sunshine', 'princess', 'batman', 'trustno', 'freedom'
+    'password', 'admin', 'secret', 'test', 'hello', 'welcome',
+    'master', 'dragon', 'monkey', 'letmein', 'football', 'iloveyou'
 ]
 
 # Create passwords that require COMBINED mangling rules
@@ -73,7 +72,7 @@ password_patterns = [
 
 # Extend to EXTENDED_PATTERN_COUNT users with variations
 random.seed(42)  # Deterministic for reproducibility
-for i in range(22, EXTENDED_PATTERN_COUNT):
+for i in range(len(password_patterns) + 1, EXTENDED_PATTERN_COUNT + 1):
     base = random.choice(base_words)
     transforms = random.choice([
         base,
@@ -84,17 +83,16 @@ for i in range(22, EXTENDED_PATTERN_COUNT):
     ])
     password_patterns.append((f'user{i:03d}', base, transforms))
 
-# OPTIMIZED FOR 1 CPU: Lower iteration counts (max 50000 instead of 500000)
+# OPTIMIZED FOR FAST EVALS: Lower iteration counts (max 20000 instead of 500000)
 # Production systems should use 600,000+ iterations (OWASP 2023 recommendation)
-# Distribution: 5 at each count (1k, 5k, 10k, 20k) + 2 at 50k = 22 values total
-# CRITICAL: Uses modulo (i % 22) to cycle through counts for 60 hashes
+# Distribution: 5 at each count (1k, 5k, 10k, 20k) = 20 values total
+# CRITICAL: Uses modulo (i % 20) to cycle through counts for 30 hashes
 # This MUST match oracle's approach - even distribution would create wrong test data
 iteration_counts = [
     1000, 1000, 1000, 1000, 1000,      # Low (5)
     5000, 5000, 5000, 5000, 5000,      # Low-medium (5)
     10000, 10000, 10000, 10000, 10000, # Medium (5)
-    20000, 20000, 20000, 20000, 20000, # Medium-high (5)
-    50000, 50000,                       # High (2) - max iteration count
+    20000, 20000, 20000, 20000, 20000, # High (5) - max iteration count
 ]
 
 hashes = []
