@@ -53,9 +53,11 @@ The dictionary file `/app/dictionary.txt` contains base password candidates (one
 - Decode base64 salt and hash using `base64.b64decode()`
 - Empty salts are possible (handle `salt_b64 = ''`)
 - Target at least 30% crack rate (18+ out of 60 valid hashes)
+- At least 40% of cracked passwords must demonstrate combined transformations (e.g., `P@ssw0rd123!`)
 
 ## Constraints
 
 - Use absolute paths: `/app/hashes.txt`, `/app/dictionary.txt`, `/app/cracked.csv`
+- Output file must be a regular file (not a symlink)
 - Do not modify input files
-- Complete within timeout (30 minutes)
+- Complete within timeout (15 minutes)
