@@ -1,6 +1,8 @@
 FROM python:3.11.11-slim
 
-# No additional dependencies needed - Python's hashlib is built-in
+# Build optimization: Pre-built images cached in GHCR for faster CI runs
+# Last updated: 2026-01-21
+
 
 WORKDIR /app
 
