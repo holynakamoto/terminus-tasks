@@ -119,6 +119,7 @@ jobs:
         run: |
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
+          export LITELLM_LOG_LEVEL=ERROR
 
           # Create task folder for harbor check
           mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
@@ -360,7 +361,7 @@ jobs:
       needs.detect-changed-tasks.outputs.has_tasks == 'true'
       && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Increased from 15 - GPT-5 can be slower than expected
+    timeout-minutes: 40  # Increased for stability
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
@@ -413,6 +414,7 @@ jobs:
           set -euo pipefail
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
+          export LITELLM_LOG_LEVEL=ERROR
 
           echo "Running GPT-5 evaluation ${{ matrix.run_number }}/5..."
           harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p $HOME/harbor_tasks/${{ matrix.task }}
@@ -435,7 +437,7 @@ jobs:
       needs.detect-changed-tasks.outputs.has_tasks == 'true'
       && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Increased from 10 to handle occasional slower runs
+    timeout-minutes: 40  # Increased from 30 to handle long reasoning/latency
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
@@ -488,6 +490,7 @@ jobs:
           set -euo pipefail
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
+          export LITELLM_LOG_LEVEL=ERROR
 
           echo "Running Claude evaluation ${{ matrix.run_number }}/5..."
           harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
@@ -506,6 +509,7 @@ jobs:
   validate-difficulty-summary:
     needs: [detect-changed-tasks, validate-difficulty-gpt, validate-difficulty-claude]
     if: >
+      always() && 
       needs.detect-changed-tasks.outputs.has_tasks == 'true'
       && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
