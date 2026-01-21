@@ -17,6 +17,9 @@ jobs:
     #   github.event.pull_request.user.login == 'external-contributor' ||
     #   github.event.pull_request.user.login == 'new-developer' ||
     #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    
+    # Make this non-blocking - don't prevent merges if review fails or hits rate limits
+    continue-on-error: true
 
     runs-on: ubuntu-latest
     permissions:
