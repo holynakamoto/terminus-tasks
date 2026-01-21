@@ -142,12 +142,18 @@ jobs:
           echo "## 📋 LLMaJ Check Results: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ -f "$HOME/${{ matrix.task }}_llmaj.json" ]; then
-            # Parse and display results
-            python3 .github/scripts/parse-llmaj-results.py "$HOME/${{ matrix.task }}_llmaj.json" "${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY 2>&1 || {
+          LLMAJ_FILE="$HOME/${{ matrix.task }}_llmaj.json"
+          if [ -f "$LLMAJ_FILE" ]; then
+            # Display results in logs for transparency
+            echo "--- LLMaJ Results for ${{ matrix.task }} ---"
+            cat "$LLMAJ_FILE"
+            echo "----------------------------------------"
+            
+            # Parse and display results in summary
+            python3 .github/scripts/parse-llmaj-results.py "$LLMAJ_FILE" "${{ matrix.task }}" | tee -a $GITHUB_STEP_SUMMARY || {
               echo "⚠️ Parser failed, showing raw JSON:" >> $GITHUB_STEP_SUMMARY
               echo '```json' >> $GITHUB_STEP_SUMMARY
-              cat "$HOME/${{ matrix.task }}_llmaj.json" >> $GITHUB_STEP_SUMMARY
+              cat "$LLMAJ_FILE" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
             }
           else
@@ -534,25 +540,6 @@ jobs:
           merge-multiple: true
         continue-on-error: true
 
-      - name: Merge results and calculate difficulty
-        run: |
-          # Merge results from both models into a single jobs directory
-          mkdir -p $HOME/jobs
-          
-          echo "Merging GPT-5 results..."
-          if [ -d "$HOME/gpt-results" ]; then
-            find $HOME/gpt-results -type d -name "jobs" -exec cp -r {}/* $HOME/jobs/ 2>/dev/null \; || true
-          fi
-          
-          echo "Merging Claude results..."
-          if [ -d "$HOME/claude-results" ]; then
-            find $HOME/claude-results -type d -name "jobs" -exec cp -r {}/* $HOME/jobs/ 2>/dev/null \; || true
-          fi
-          
-          # Count total result files
-          RESULT_COUNT=$(find "$HOME/jobs" -name "result.json" -type f 2>/dev/null | wc -l)
-          echo "Total result files collected: $RESULT_COUNT (expected: 10)"
-
       - name: Calculate and Display Difficulty Rating
         if: always()
         run: |
@@ -560,68 +547,40 @@ jobs:
           echo "## 📊 Difficulty Evaluation: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Find the jobs directory
-          JOBS_DIR=""
-          if [ -d "$HOME/jobs" ]; then
-            JOBS_DIR="$HOME/jobs"
-          else
-            FOUND_JOBS=$(find $HOME -type d -name "jobs" 2>/dev/null | head -1)
-            if [ -n "$FOUND_JOBS" ]; then
-              JOBS_DIR="$FOUND_JOBS"
-            fi
-          fi
-
-          if [ -z "$JOBS_DIR" ] || [ ! -d "$JOBS_DIR" ]; then
-            echo "⚠️ No jobs directory found. Difficulty calculation skipped." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            exit 0
-          fi
-
-          echo "Found jobs directory: $JOBS_DIR"
-
-          # Count result files
-          RESULT_COUNT=$(find "$JOBS_DIR" -name "result.json" -type f 2>/dev/null | wc -l)
-          echo "Found $RESULT_COUNT result.json files"
-
-          if [ "$RESULT_COUNT" -eq 0 ]; then
-            echo "⚠️ No result.json files found in jobs directory" >> $GITHUB_STEP_SUMMARY
+          # Check if directories exist
+          if [ ! -d "$HOME/gpt-results" ] && [ ! -d "$HOME/claude-results" ]; then
+            echo "⚠️ No results found. Difficulty calculation skipped." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
 
           # Run the difficulty calculation script
-          python3 .github/scripts/calculate-difficulty.py "${{ matrix.task }}" "$JOBS_DIR" >> $GITHUB_STEP_SUMMARY 2>&1 || {
-            echo "⚠️ Failed to calculate difficulty rating" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Jobs directory: $JOBS_DIR" >> $GITHUB_STEP_SUMMARY
-            echo "Result files found: $RESULT_COUNT" >> $GITHUB_STEP_SUMMARY
-          }
+          python3 .github/scripts/calculate-difficulty.py "${{ matrix.task }}" \
+            --gpt-dir "$HOME/gpt-results" \
+            --claude-dir "$HOME/claude-results" >> $GITHUB_STEP_SUMMARY 2>&1 || {
+              echo "⚠️ Failed to calculate difficulty rating" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "GPT results directory: $HOME/gpt-results" >> $GITHUB_STEP_SUMMARY
+              echo "Claude results directory: $HOME/claude-results" >> $GITHUB_STEP_SUMMARY
+            }
 
-          # If all runs failed with 0 episodes, show a sample log for debugging
-          ZERO_EPISODE_COUNT=$(find "$JOBS_DIR" -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | wc -l)
-          if [ "$ZERO_EPISODE_COUNT" -gt 0 ] && [ "$RESULT_COUNT" -gt 0 ]; then
+          # If any runs failed with 0 episodes, show a sample log for debugging
+          # (Finding recursively in both directories)
+          ZERO_EPISODE_COUNT=$(find $HOME/gpt-results $HOME/claude-results -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | wc -l)
+          if [ "$ZERO_EPISODE_COUNT" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "### 🐛 Debugging: Zero Episode Runs Found" >> $GITHUB_STEP_SUMMARY
+            echo "Found $ZERO_EPISODE_COUNT runs where agents failed to start." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🐛 Critical: All Agents Failing to Start" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Issue**: Found $ZERO_EPISODE_COUNT/$RESULT_COUNT runs with 0 episodes (agents failed to start)." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "This means the agents aren't even initializing - likely due to:" >> $GITHUB_STEP_SUMMARY
-            echo "- Docker build failure" >> $GITHUB_STEP_SUMMARY
-            echo "- Environment setup error" >> $GITHUB_STEP_SUMMARY
-            echo "- Task configuration issue" >> $GITHUB_STEP_SUMMARY
-            echo "- API/authentication problem" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-
+            
             # Find a sample result.json with 0 episodes
-            SAMPLE_RESULT=$(find "$JOBS_DIR" -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | head -1)
+            SAMPLE_RESULT=$(find $HOME/gpt-results $HOME/claude-results -name "result.json" -exec grep -l '"episodes": 0' {} \; 2>/dev/null | head -1)
             if [ -n "$SAMPLE_RESULT" ]; then
               echo "**Sample Failed Run Details:**" >> $GITHUB_STEP_SUMMARY
               echo '```json' >> $GITHUB_STEP_SUMMARY
               cat "$SAMPLE_RESULT" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
             fi
           fi
 
@@ -633,44 +592,58 @@ jobs:
         with:
           name: difficulty-${{ matrix.task }}-results
           path: |
-            $HOME/jobs/**
+            $HOME/gpt-results/**
+            $HOME/claude-results/**
           retention-days: 7
           if-no-files-found: ignore
 
   summary:
-    needs: [static-checks, validate-oracle, validate-nop, validate-difficulty-summary]
+    needs: [detect-changed-tasks, static-checks, validate-oracle, validate-nop, validate-difficulty-summary]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      matrix:
+        task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+      fail-fast: false
     steps:
-      - name: Summary
+      - name: Final Summary for ${{ matrix.task }}
         run: |
-          echo "## Task Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Final Summary: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ needs.validate-oracle.result }}" = "success" ]; then
-            echo "✅ Oracle validation passed" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Oracle validation failed" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ needs.validate-nop.result }}" = "success" ]; then
-            echo "✅ NOP validation passed" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ NOP validation failed" >> $GITHUB_STEP_SUMMARY
-          fi
-
+          
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          # Static Checks
           if [ "${{ needs.static-checks.result }}" = "success" ]; then
-            echo "✅ Static checks (Ruff & LLMaJ) passed" >> $GITHUB_STEP_SUMMARY
+            echo "| Static Checks (Ruff & LLMaJ) | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Static checks failed" >> $GITHUB_STEP_SUMMARY
+            echo "| Static Checks (Ruff & LLMaJ) | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
-
-          # Difficulty evaluations are skipped on PRs
+          
+          # Oracle
+          if [ "${{ needs.validate-oracle.result }}" = "success" ]; then
+            echo "| Oracle Validation | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Oracle Validation | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # NOP
+          if [ "${{ needs.validate-nop.result }}" = "success" ]; then
+            echo "| NOP Validation | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| NOP Validation | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Difficulty
           if [ "${{ needs.validate-difficulty-summary.result }}" = "success" ]; then
-            echo "✅ Difficulty evaluations completed" >> $GITHUB_STEP_SUMMARY
+            echo "| Difficulty Evaluation | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.validate-difficulty-summary.result }}" = "skipped" ]; then
-            echo "⏭️ Difficulty evaluations skipped (only run on main branch)" >> $GITHUB_STEP_SUMMARY
+            echo "| Difficulty Evaluation | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Difficulty evaluations failed or timed out" >> $GITHUB_STEP_SUMMARY
+            echo "| Difficulty Evaluation | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Detailed results for each check can be found in the sections above." >> $GITHUB_STEP_SUMMARY
