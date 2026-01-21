@@ -26,11 +26,10 @@ import time
 start = time.time()
 print(f"[DEBUG] Python data generation started")
 
-# Base dictionary words
+# Base dictionary words (reduced to 12 for faster eval times)
 base_words = [
-    'password', 'admin', 'secret', 'test', 'hello', 'welcome', 'master',
-    'summer', 'dragon', 'monkey', 'letmein', 'football', 'iloveyou',
-    'starwars', 'sunshine', 'princess', 'batman', 'trustno', 'freedom'
+    'password', 'admin', 'secret', 'test', 'hello', 'welcome',
+    'master', 'dragon', 'monkey', 'letmein', 'football', 'iloveyou'
 ]
 
 # Create passwords that require COMBINED mangling rules
@@ -91,22 +90,20 @@ for i in range(22, 75):
     ])
     password_patterns.append((f'user{i:03d}', base, transforms))
 
-# OPTIMIZED FOR 1 CPU: Lower iteration counts
-# Max 50000 instead of 500000 (10x reduction)
+# OPTIMIZED FOR SUB-30MIN PIPELINE: Minimal viable task
+# Max 10000 iterations, only 10 hashes
 iteration_counts = [
-    1000, 1000, 1000, 1000, 1000,      # Low (5)
-    5000, 5000, 5000, 5000, 5000,      # Low-medium (5)
-    10000, 10000, 10000, 10000, 10000, # Medium (5)
-    20000, 20000, 20000, 20000, 20000, # Medium-high (5)
-    50000, 50000,                       # High (2) - max iteration count
+    1000, 1000, 1000,      # Low (3)
+    5000, 5000, 5000,      # Medium (3)
+    10000, 10000, 10000, 10000, # High (4)
 ]
 
 hashes = []
 
-print(f"[DEBUG] Generating {len(password_patterns[:60])} password hashes...")
+print(f"[DEBUG] Generating {len(password_patterns[:10])} password hashes...")
 
 # Generate valid hashes
-for i, (username, base_word, password) in enumerate(password_patterns[:60]):
+for i, (username, base_word, password) in enumerate(password_patterns[:10]):
     iterations = iteration_counts[i % len(iteration_counts)]
 
     # Some entries have empty salts (edge case)

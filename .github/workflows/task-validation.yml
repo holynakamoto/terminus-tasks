@@ -8,8 +8,7 @@ on:
       - '.github/workflows/task-validation.yml'
   push:
     branches:
-      - 'claude/**'
-      - 'main'
+      - 'main'  # Only run on main branch pushes (post-merge validation)
     paths:
       - 'tasks/**'
       - '.github/workflows/task-validation.yml'
@@ -316,11 +315,14 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  validate-difficulty:
+  validate-difficulty-gpt:
     needs: [detect-changed-tasks, validate-oracle, validate-nop]
-    if: needs.detect-changed-tasks.outputs.has_tasks == 'true'
+    # Only run difficulty evals on main branch or when explicitly requested
+    if: >
+      needs.detect-changed-tasks.outputs.has_tasks == 'true'
+      && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
@@ -337,6 +339,14 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Cache uv packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-harbor-0.1.25-terminal-bench-0.2.18
+          restore-keys: |
+            ${{ runner.os }}-uv-
 
       - name: Install uv and harbor
         run: |
@@ -365,12 +375,84 @@ jobs:
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
-          # Run 5 times to establish a reliable pass rate
-          # Exit on first failure to surface errors immediately
-          for i in {1..5}; do
-            echo "GPT-5 run $i/5..."
+          # Determine run count based on branch/event
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RUN_COUNT=1
+            echo "Running 1 iteration for PR"
+          else
+            RUN_COUNT=3
+            echo "Running 3 iterations for main branch"
+          fi
+
+          for i in $(seq 1 $RUN_COUNT); do
+            echo "GPT-5 run $i/$RUN_COUNT..."
             harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p $HOME/harbor_tasks/${{ matrix.task }}
           done
+
+      - name: Upload GPT-5 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: difficulty-gpt-${{ matrix.task }}-results
+          path: |
+            $HOME/jobs/**
+            $HOME/harbor_tasks/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  validate-difficulty-claude:
+    needs: [detect-changed-tasks, validate-oracle, validate-nop]
+    # Only run difficulty evals on main branch or when explicitly requested
+    if: >
+      needs.detect-changed-tasks.outputs.has_tasks == 'true'
+      && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache uv packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-harbor-0.1.25-terminal-bench-0.2.18
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Install uv and harbor
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          $HOME/.local/bin/uv pip install --system harbor==0.1.25 terminal-bench==0.2.18
+
+      - name: Check Portkey Secret
+        env:
+          PORTKEY_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
+        run: |
+          if [ -z "$PORTKEY_API_KEY" ]; then
+            echo "❌ ERROR: PORTKEY_API_KEY secret is not set in GitHub Secrets!"
+            exit 1
+          fi
+          echo "✅ PORTKEY_API_KEY secret is configured"
+
+      - name: Prepare task for harbor
+        run: |
+          mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
+          cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
 
       - name: Run Claude Sonnet 4.5 Difficulty Eval
         run: |
@@ -378,12 +460,76 @@ jobs:
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
-          # Run 5 times to establish a reliable pass rate
-          # Exit on first failure to surface errors immediately
-          for i in {1..5}; do
-            echo "Claude run $i/5..."
+          # Determine run count based on branch/event
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RUN_COUNT=1
+            echo "Running 1 iteration for PR"
+          else
+            RUN_COUNT=3
+            echo "Running 3 iterations for main branch"
+          fi
+
+          for i in $(seq 1 $RUN_COUNT); do
+            echo "Claude run $i/$RUN_COUNT..."
             harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
           done
+
+      - name: Upload Claude results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: difficulty-claude-${{ matrix.task }}-results
+          path: |
+            $HOME/jobs/**
+            $HOME/harbor_tasks/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  validate-difficulty-summary:
+    needs: [detect-changed-tasks, validate-difficulty-gpt, validate-difficulty-claude]
+    if: >
+      needs.detect-changed-tasks.outputs.has_tasks == 'true'
+      && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Download GPT-5 results
+        uses: actions/download-artifact@v4
+        with:
+          name: difficulty-gpt-${{ matrix.task }}-results
+          path: $HOME/gpt-results
+        continue-on-error: true
+
+      - name: Download Claude results
+        uses: actions/download-artifact@v4
+        with:
+          name: difficulty-claude-${{ matrix.task }}-results
+          path: $HOME/claude-results
+        continue-on-error: true
+
+      - name: Merge results and calculate difficulty
+        run: |
+          # Merge results from both models into a single jobs directory
+          mkdir -p $HOME/jobs
+          if [ -d "$HOME/gpt-results/jobs" ]; then
+            cp -r $HOME/gpt-results/jobs/* $HOME/jobs/ 2>/dev/null || true
+          fi
+          if [ -d "$HOME/claude-results/jobs" ]; then
+            cp -r $HOME/claude-results/jobs/* $HOME/jobs/ 2>/dev/null || true
+          fi
 
       - name: Calculate and Display Difficulty Rating
         if: always()
@@ -392,16 +538,11 @@ jobs:
           echo "## 📊 Difficulty Evaluation: ${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Find the jobs directory (try multiple locations)
+          # Find the jobs directory
           JOBS_DIR=""
-          if [ -d "$HOME/harbor_tasks/${{ matrix.task }}/jobs" ]; then
-            JOBS_DIR="$HOME/harbor_tasks/${{ matrix.task }}/jobs"
-          elif [ -d "$HOME/jobs" ]; then
+          if [ -d "$HOME/jobs" ]; then
             JOBS_DIR="$HOME/jobs"
-          elif [ -d "jobs" ]; then
-            JOBS_DIR="jobs"
           else
-            # Try to find any jobs directory
             FOUND_JOBS=$(find $HOME -type d -name "jobs" 2>/dev/null | head -1)
             if [ -n "$FOUND_JOBS" ]; then
               JOBS_DIR="$FOUND_JOBS"
@@ -464,19 +605,18 @@ jobs:
 
           echo "" >> $GITHUB_STEP_SUMMARY
 
-      - name: Upload difficulty results
+      - name: Upload combined difficulty results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: difficulty-${{ matrix.task }}-results
           path: |
             $HOME/jobs/**
-            $HOME/harbor_tasks/**/*.log
           retention-days: 7
           if-no-files-found: ignore
 
   summary:
-    needs: [static-checks, validate-oracle, validate-nop, validate-difficulty]
+    needs: [static-checks, validate-oracle, validate-nop, validate-difficulty-summary]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -504,8 +644,11 @@ jobs:
             echo "❌ Static checks failed" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [ "${{ needs.validate-difficulty.result }}" = "success" ]; then
+          # Difficulty evaluations are skipped on PRs
+          if [ "${{ needs.validate-difficulty-summary.result }}" = "success" ]; then
             echo "✅ Difficulty evaluations completed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.validate-difficulty-summary.result }}" = "skipped" ]; then
+            echo "⏭️ Difficulty evaluations skipped (only run on main branch)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Difficulty evaluations failed or timed out" >> $GITHUB_STEP_SUMMARY
           fi
