@@ -14,17 +14,17 @@ The difficulty is based on whichever model performs BETTER (higher pass rate).
 """
 import json
 import sys
+import argparse
 from pathlib import Path
 from typing import List, Dict, Tuple
 
 
-def find_result_files(jobs_dir: str) -> List[Path]:
+def find_result_files(jobs_dir: Path) -> List[Path]:
     """Find all result.json files in the jobs directory."""
-    jobs_path = Path(jobs_dir)
-    if not jobs_path.exists():
+    if not jobs_dir.exists():
         return []
 
-    result_files = list(jobs_path.glob("**/result.json"))
+    result_files = list(jobs_dir.glob("**/result.json"))
     return result_files
 
 
@@ -66,17 +66,6 @@ def calculate_pass_rate(results: List[Dict]) -> Tuple[int, int, float]:
 def determine_difficulty(pass_rate: float, results: List[Dict] = None) -> str:
     """
     Determine difficulty rating based on pass rate.
-
-    Returns one of: "too_hard", "hard", "medium", "easy", "too_easy"
-
-    - Too Hard: < 20% pass rate (NOT accepted)
-    - Hard: 20-40% pass rate (accepted)
-    - Medium: 40-60% pass rate (accepted)
-    - Easy: 60-80% pass rate (accepted)
-    - Too Easy: >= 80% pass rate (NOT accepted)
-
-    Note: Broken state (all agents fail to start) should be checked
-    separately before calling this function.
     """
     if pass_rate >= 80:
         return "too_easy"
@@ -134,7 +123,7 @@ def format_results_for_github(
     # Determine difficulty based on BETTER performing model
     best_pass_rate = max(gpt5_rate, claude_rate)
 
-    # Check for broken state first (either model completely broken)
+    # Check for broken state first
     if gpt5_broken or claude_broken:
         difficulty = "broken"
     else:
@@ -144,160 +133,89 @@ def format_results_for_github(
     output.append(f"- **Best Pass Rate**: {best_pass_rate:.1f}% ({'GPT-5' if gpt5_rate >= claude_rate else 'Claude Sonnet 4.5'})")
 
     if difficulty == "broken":
-        # Specify which model(s) are broken
         broken_models = []
-        if gpt5_broken:
-            broken_models.append("GPT-5")
-        if claude_broken:
-            broken_models.append("Claude Sonnet 4.5")
+        if gpt5_broken: broken_models.append("GPT-5")
+        if claude_broken: broken_models.append("Claude Sonnet 4.5")
         broken_str = " and ".join(broken_models)
 
         output.append(f"- **Rating**: ❌ **BROKEN** - {broken_str} agents failed to start")
         output.append("")
-        output.append(f"🚨 **CRITICAL ISSUE**: All {broken_str} agent runs failed with 0 episodes (agents never started).")
-        output.append("")
-        output.append("**This means the task is broken or has critical issues:**")
-        output.append("  - Docker build failure")
-        output.append("  - Environment setup error")
-        output.append("  - Task configuration problem")
-        output.append("  - Invalid instruction format")
-        output.append("  - Missing required files")
-        output.append("")
-        output.append("⚠️ **ACTION REQUIRED**: Fix the task before it can be evaluated for difficulty.")
+        output.append(f"🚨 **CRITICAL ISSUE**: All {broken_str} agent runs failed with 0 episodes.")
     elif difficulty == "too_hard":
         output.append(f"- **Rating**: ❌ **TOO HARD** (<20% - Task is impossibly difficult)")
-        output.append("")
-        output.append("🚨 **FAILED**: This task has a pass rate below 20% and is too difficult to be useful.")
-        output.append("")
-        output.append("**Why this is a problem:**")
-        output.append("  - Tasks with <20% pass rate are likely unsolvable or too ambiguous")
-        output.append("  - Even 'HARD' tasks should be solvable by capable agents 20-40% of the time")
-        output.append("  - Very low pass rates indicate unclear instructions or impossible requirements")
-        output.append("")
-        output.append("⚠️ **ACTION REQUIRED**: Simplify the task or clarify instructions to achieve at least 20% pass rate.")
     elif difficulty == "too_easy":
         output.append(f"- **Rating**: ❌ **TOO EASY** (≥80% - Task is too simple)")
-        output.append("")
-        output.append("⚠️ **ACTION REQUIRED**: This task has a pass rate above 80% and will NOT be accepted.")
-        output.append("")
-        output.append("**Please increase the difficulty by:**")
-        output.append("  - Adding more steps")
-        output.append("  - Including hidden requirements")
-        output.append("  - Using more niche knowledge")
-        output.append("  - Creating more complex debugging scenarios")
-        output.append("  - Adding more edge cases")
     elif difficulty == "hard":
         output.append(f"- **Rating**: 🔴 **HARD** (20-40%)")
-        output.append("")
-        output.append("✅ This task meets the HARD difficulty criteria.")
     elif difficulty == "medium":
         output.append(f"- **Rating**: 🟡 **MEDIUM** (40-60%)")
-        output.append("")
-        output.append("✅ This task meets the MEDIUM difficulty criteria.")
     elif difficulty == "easy":
         output.append(f"- **Rating**: 🟢 **EASY** (60-80%)")
-        output.append("")
-        output.append("✅ This task meets the EASY difficulty criteria.")
 
     output.append("")
-
-    # Difficulty Guidelines Reference
     output.append("### 📖 Difficulty Guidelines")
     output.append("- **Hard**: 20-40% pass rate")
     output.append("- **Medium**: 40-60% pass rate")
     output.append("- **Easy**: 60-80% pass rate")
     output.append("- **Too Easy**: ≥ 80% pass rate (NOT accepted)")
     output.append("- **Too Hard**: < 20% pass rate (NOT accepted)")
-    output.append("- **Broken**: All agents fail to start (0 episodes)")
-    output.append("")
-    output.append("_Difficulty is based on whichever model performs better._")
-
+    
     return "\n".join(output)
 
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: calculate-difficulty.py <task_name> <jobs_dir> [gpt5_jobs_dir] [claude_jobs_dir]", file=sys.stderr)
-        print("", file=sys.stderr)
-        print("If only jobs_dir is provided, it will search for all result.json files.", file=sys.stderr)
-        print("If separate dirs are provided, first 5 are for GPT-5, next 5 for Claude.", file=sys.stderr)
+    parser = argparse.ArgumentParser(description="Calculate task difficulty rating.")
+    parser.add_argument("task_name", help="Name of the task")
+    parser.add_argument("--gpt-dir", help="Directory containing GPT-5 results")
+    parser.add_argument("--claude-dir", help="Directory containing Claude results")
+    parser.add_argument("--combined-dir", help="Directory containing mixed results (will split 5/5)")
+    
+    args = parser.parse_args()
+
+    gpt5_results = []
+    claude_results = []
+
+    if args.gpt_dir:
+        files = find_result_files(Path(args.gpt_dir))
+        gpt5_results = [parse_result_file(f) for f in files]
+    
+    if args.claude_dir:
+        files = find_result_files(Path(args.claude_dir))
+        claude_results = [parse_result_file(f) for f in files]
+
+    if args.combined_dir and not (gpt5_results or claude_results):
+        files = find_result_files(Path(args.combined_dir))
+        # Sort by modification time to try to preserve order if possible
+        all_files = sorted(files, key=lambda x: x.stat().st_mtime)
+        all_parsed = [parse_result_file(f) for f in all_files]
+        
+        if len(all_parsed) == 10:
+            gpt5_results = all_parsed[:5]
+            claude_results = all_parsed[5:]
+        else:
+            split = len(all_parsed) // 2
+            gpt5_results = all_parsed[:split]
+            claude_results = all_parsed[split:]
+
+    if not gpt5_results and not claude_results:
+        print(f"## ⚠️ Difficulty Evaluation: No Results Found", file=sys.stdout)
+        print(f"No evaluation results found for task: {args.task_name}", file=sys.stdout)
         sys.exit(1)
 
-    task_name = sys.argv[1]
-    jobs_dir = sys.argv[2]
+    # Format and print
+    print(format_results_for_github(gpt5_results, claude_results, args.task_name))
 
-    # Find all result files
-    all_results = find_result_files(jobs_dir)
-
-    if not all_results:
-        print(f"⚠️ No result.json files found in {jobs_dir}", file=sys.stderr)
-        print("")
-        print(f"## ⚠️ Difficulty Evaluation: No Results Found")
-        print(f"No evaluation results found for task: {task_name}")
-        sys.exit(1)
-
-    # Parse all results
-    parsed_results = [parse_result_file(r) for r in all_results]
-
-    # Sort by file modification time (more reliable than timestamp field)
-    # This preserves the execution order: GPT-5 runs first, then Claude
-    all_results_with_mtime = [(r, r.stat().st_mtime) for r in all_results]
-    all_results_with_mtime.sort(key=lambda x: x[1])
-    sorted_result_files = [r for r, _ in all_results_with_mtime]
-
-    # Parse in the sorted order
-    parsed_results = [parse_result_file(r) for r in sorted_result_files]
-
-    # Split results based on workflow execution order
-    # Workflow runs GPT-5 5 times, then Claude 5 times
-    total_runs = len(parsed_results)
-
-    if total_runs == 10:
-        # Perfect case: 5 GPT-5 + 5 Claude
-        gpt5_results = parsed_results[:5]
-        claude_results = parsed_results[5:]
-    elif total_runs >= 2:
-        # Split evenly if we have at least 2 results
-        split_point = total_runs // 2
-        gpt5_results = parsed_results[:split_point]
-        claude_results = parsed_results[split_point:]
-    elif total_runs == 1:
-        # Only one result - can't determine difficulty reliably
-        gpt5_results = []
-        claude_results = parsed_results
-    else:
-        gpt5_results = []
-        claude_results = []
-
-    # Format results
-    formatted_output = format_results_for_github(gpt5_results, claude_results, task_name)
-    print(formatted_output)
-
-    # Check if task is invalid
-    gpt5_passed, gpt5_total, gpt5_rate = calculate_pass_rate(gpt5_results)
-    claude_passed, claude_total, claude_rate = calculate_pass_rate(claude_results)
-    best_pass_rate = max(gpt5_rate, claude_rate)
-
-    # Check if either model is completely broken
+    # Exit with code logic
+    gpt5_rate = calculate_pass_rate(gpt5_results)[2]
+    claude_rate = calculate_pass_rate(claude_results)[2]
+    best_rate = max(gpt5_rate, claude_rate)
+    
     gpt5_broken = gpt5_results and all(r["episodes"] == 0 for r in gpt5_results)
     claude_broken = claude_results and all(r["episodes"] == 0 for r in claude_results)
-
-    if gpt5_broken or claude_broken:
-        difficulty = "broken"
-    else:
-        difficulty = determine_difficulty(best_pass_rate, None)
-
-    if difficulty in ["broken", "too_hard", "too_easy"]:
-        print("", file=sys.stderr)
-        if difficulty == "broken":
-            print("❌ ERROR: Task is BROKEN - at least one model's agents all failed to start (0 episodes)", file=sys.stderr)
-        elif difficulty == "too_hard":
-            print("❌ ERROR: Task is TOO HARD (pass rate < 20%)", file=sys.stderr)
-        elif difficulty == "too_easy":
-            print("❌ ERROR: Task is TOO EASY (pass rate >= 80%)", file=sys.stderr)
+    
+    if gpt5_broken or claude_broken or best_rate < 20 or best_rate >= 80:
         sys.exit(1)
-    else:
-        sys.exit(0)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

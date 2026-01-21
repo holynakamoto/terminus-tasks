@@ -7,24 +7,14 @@ from typing import Literal
 from langchain_anthropic import ChatAnthropic
 
 # Agent system prompt
-AGENT_SYSTEM_PROMPT = """You are an AI agent working on a coding task. You have access to:
-- Terminal commands (executed in a Docker container)
-- File editing capabilities
-- Task instructions and requirements
-
-Your goal is to solve the task by:
-1. Understanding the requirements from the instruction
-2. Planning your approach
-3. Executing commands and modifying files as needed
-4. Testing your solution
-5. Iterating until the solution works
-
-When responding, format your commands clearly. You can use markdown code blocks to indicate commands:
-```bash
-command here
-```
-
-Be methodical and test your work frequently."""
+# Agent system prompt - Optimized for 2026 reasoning models (Concise & Direct)
+AGENT_SYSTEM_PROMPT = """You are an expert AI software engineer. System Goal: Solve the provided task efficiently.
+Capabilities: Terminal commands (Docker), File editing, Tool use.
+Strict Rules:
+1. Be concise. Brief planning only.
+2. Execute precisely. Check results immediately.
+3. Stop once verified. Use test.sh.
+Output format: Use ```bash for commands."""
 
 
 class HarborNodes:
@@ -140,17 +130,39 @@ class HarborNodes:
             }
     
     def agent_episode_node(self, state: dict) -> dict:
-        """Run one agent reasoning episode."""
+        """Run one agent reasoning episode with Performance Optimization."""
         if state.get("error"):
             return state
         
         prompt = self._build_agent_prompt(state)
         
+        # Optimization: Use Anthropic Prompt Caching if applicable
+        # We cache the System Prompt + Instruction + early Trajectory
+        messages = [
+            {"role": "system", "content": AGENT_SYSTEM_PROMPT},
+        ]
+        
+        # Determine if we should use structured content for caching (Anthropic)
+        is_anthropic = hasattr(self.llm, "model") and "claude" in str(self.llm.model).lower() or \
+                       hasattr(self.llm, "model_name") and "claude" in str(self.llm.model_name).lower()
+
+        if is_anthropic:
+            # Add cache breakpoint to instruction (long-lived constant)
+            messages.append({
+                "role": "user", 
+                "content": [
+                    {
+                        "type": "text", 
+                        "text": prompt,
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })
+        else:
+            messages.append({"role": "user", "content": prompt})
+
         try:
-            response = self.llm.invoke([
-                {"role": "system", "content": AGENT_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ])
+            response = self.llm.invoke(messages)
             
             # Parse commands from response
             commands = self._extract_commands(response.content)

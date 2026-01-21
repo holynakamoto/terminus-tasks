@@ -65,27 +65,42 @@ class HarborGraph:
         if portkey_base_url and "portkey" in portkey_base_url.lower():
             if os.getenv("DEBUG_HARBOR_LG"):
                 print(f"DEBUG: Using Portkey with OpenAI interface")
+            # Performance Tweak: Set max_completion_tokens (OpenAI 2026 standard)
+            # Default to 2048 to balance reasoning depth and cost/latency
+            max_tokens = int(os.getenv("max_completion_tokens", 2048))
+            
             self.llm = ChatOpenAI(
                 model=model,
                 api_key=portkey_api_key,
                 base_url=portkey_base_url,
                 default_headers=portkey_headers,
                 temperature=0,
-                max_tokens=4096
+                max_tokens=max_tokens
             )
         else:
             if os.getenv("DEBUG_HARBOR_LG"):
                 print(f"DEBUG: Using direct Anthropic")
+            # Performance Tweak: Standardize max_tokens for Sonnet 4.5
+            max_tokens = int(os.getenv("max_completion_tokens", 2048))
+            
             llm_kwargs = {
                 "model": model,
                 "api_key": portkey_api_key,
                 "temperature": 0,
+                "max_tokens": max_tokens
             }
             if portkey_base_url:
                 llm_kwargs["anthropic_api_url"] = portkey_base_url
             if portkey_headers:
                 llm_kwargs["default_headers"] = portkey_headers
             
+            # Prompt Caching Tweak (Anthropic 2026)
+            # Ensure headers enable beta features if using older SDKs
+            if "anthropic" in (portkey_base_url or "").lower():
+                if not llm_kwargs.get("default_headers"):
+                    llm_kwargs["default_headers"] = {}
+                llm_kwargs["default_headers"]["anthropic-beta"] = "prompt-caching-2024-07-31"
+
             # Debug output to see what's being passed
             if os.getenv("DEBUG_HARBOR_LG"):
                 print(f"DEBUG: Initializing ChatAnthropic with kwargs: {llm_kwargs}")
