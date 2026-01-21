@@ -1,5 +1,6 @@
 #!/bin/bash
 # Test a task by running its oracle solution directly
+# Enhanced to use pre-built Docker images from GHCR when available
 set -e
 
 TASK_NAME=$1
@@ -37,20 +38,44 @@ fi
 
 echo "Found solution script: $SOLVE_SCRIPT"
 
-# Build the Docker image if Dockerfile exists
+# Build or pull the Docker image
 if [ -f "$TASK_DIR/environment/Dockerfile" ]; then
-    echo "Building Docker environment..."
-    docker buildx build \
-        --cache-from=type=local,src=/tmp/.buildx-cache \
-        --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
-        --load \
-        -t "$TASK_NAME-test" \
-        "$TASK_DIR/environment/"
+    IMAGE_NAME="$TASK_NAME-test"
+    
+    # Try to use pre-built image from GHCR if available
+    if [ -n "$USE_PREBUILT_IMAGES" ] && [ "$USE_PREBUILT_IMAGES" = "true" ]; then
+        # Determine the correct image tag
+        if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            GHCR_IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/task-$TASK_NAME:pr-$GITHUB_PR_NUMBER"
+        else
+            GHCR_IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/task-$TASK_NAME:${GITHUB_REF_NAME}"
+        fi
+        
+        echo "Attempting to pull pre-built image: $GHCR_IMAGE"
+        if docker pull "$GHCR_IMAGE" 2>/dev/null; then
+            echo "✅ Using pre-built image from GHCR"
+            docker tag "$GHCR_IMAGE" "$IMAGE_NAME"
+        else
+            echo "⚠️  Pre-built image not found, falling back to local build"
+            USE_PREBUILT_IMAGES="false"
+        fi
+    fi
+    
+    # Build locally if pre-built image not used
+    if [ "$USE_PREBUILT_IMAGES" != "true" ]; then
+        echo "Building Docker environment locally..."
+        docker buildx build \
+            --cache-from=type=local,src=/tmp/.buildx-cache \
+            --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
+            --load \
+            -t "$IMAGE_NAME" \
+            "$TASK_DIR/environment/"
 
-    # Move cache to prevent unlimited growth
-    if [ -d "/tmp/.buildx-cache-new" ]; then
-        rm -rf /tmp/.buildx-cache
-        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+        # Move cache to prevent unlimited growth
+        if [ -d "/tmp/.buildx-cache-new" ]; then
+            rm -rf /tmp/.buildx-cache
+            mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+        fi
     fi
 
     # Run solution AND tests in the same container to preserve state
@@ -64,7 +89,7 @@ if [ -f "$TASK_DIR/environment/Dockerfile" ]; then
         -v "$TASK_DIR/solution:/solution:ro" \
         -v "$TASK_DIR/tests:/tests:ro" \
         -w /app \
-        "$TASK_NAME-test" \
+        "$IMAGE_NAME" \
         bash -c '
             set -e
             echo "=== Running solution ==="
