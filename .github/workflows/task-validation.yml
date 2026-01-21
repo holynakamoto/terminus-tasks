@@ -407,14 +407,10 @@ jobs:
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
-          # Determine run count based on branch/event
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            RUN_COUNT=1
-            echo "Running 1 iteration for PR"
-          else
-            RUN_COUNT=3
-            echo "Running 3 iterations for main branch"
-          fi
+          # Run 1 iteration for fast feedback
+          # Can increase to 3-5 runs later if statistical confidence needed
+          RUN_COUNT=1
+          echo "Running 1 iteration for fast feedback"
 
           for i in $(seq 1 $RUN_COUNT); do
             echo "GPT-5 run $i/$RUN_COUNT..."
@@ -492,14 +488,10 @@ jobs:
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
-          # Determine run count based on branch/event
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            RUN_COUNT=1
-            echo "Running 1 iteration for PR"
-          else
-            RUN_COUNT=3
-            echo "Running 3 iterations for main branch"
-          fi
+          # Run 1 iteration for fast feedback
+          # Can increase to 3-5 runs later if statistical confidence needed
+          RUN_COUNT=1
+          echo "Running 1 iteration for fast feedback"
 
           for i in $(seq 1 $RUN_COUNT); do
             echo "Claude run $i/$RUN_COUNT..."
