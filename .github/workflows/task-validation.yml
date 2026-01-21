@@ -429,7 +429,7 @@ jobs:
       needs.detect-changed-tasks.outputs.has_tasks == 'true'
       && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15  # Increased from 10 to handle occasional slower runs
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
