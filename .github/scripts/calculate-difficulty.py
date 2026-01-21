@@ -95,7 +95,9 @@ def format_results_for_github(
     output.append("### 🤖 GPT-5 (with Codex agent)")
     output.append(f"- **Pass Rate**: {gpt5_passed}/{gpt5_total} ({gpt5_rate:.1f}%)")
     if gpt5_results:
-        output.append(f"- **Runs**: {gpt5_total}")
+        output.append(f"- **Runs**: {gpt5_total}/5")
+        if gpt5_total < 5:
+            output.append(f"  - ⚠️ **Warning**: {5 - gpt5_total} runs were missing or canceled.")
         for i, result in enumerate(gpt5_results, 1):
             status = "✅ PASS" if result["success"] else "❌ FAIL"
             output.append(f"  - Run {i}: {status} (Episodes: {result['episodes']})")
@@ -108,7 +110,9 @@ def format_results_for_github(
     output.append("### 🤖 Claude Sonnet 4.5 (with Claude Code agent)")
     output.append(f"- **Pass Rate**: {claude_passed}/{claude_total} ({claude_rate:.1f}%)")
     if claude_results:
-        output.append(f"- **Runs**: {claude_total}")
+        output.append(f"- **Runs**: {claude_total}/5")
+        if claude_total < 5:
+            output.append(f"  - ⚠️ **Warning**: {5 - claude_total} runs were missing or canceled.")
         for i, result in enumerate(claude_results, 1):
             status = "✅ PASS" if result["success"] else "❌ FAIL"
             output.append(f"  - Run {i}: {status} (Episodes: {result['episodes']})")
