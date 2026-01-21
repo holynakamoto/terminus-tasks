@@ -354,10 +354,11 @@ jobs:
       needs.detect-changed-tasks.outputs.has_tasks == 'true'
       && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 15
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+        run_number: [1, 2, 3, 4, 5]  # Run 5 parallel evaluations
       fail-fast: false
 
     steps:
@@ -401,27 +402,20 @@ jobs:
           mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
           cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
 
-      - name: Run GPT-5 Difficulty Eval
+      - name: Run GPT-5 Difficulty Eval (Run ${{ matrix.run_number }}/5)
         run: |
           set -euo pipefail
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
-          # Run 1 iteration for fast feedback
-          # Can increase to 3-5 runs later if statistical confidence needed
-          RUN_COUNT=1
-          echo "Running 1 iteration for fast feedback"
-
-          for i in $(seq 1 $RUN_COUNT); do
-            echo "GPT-5 run $i/$RUN_COUNT..."
-            harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p $HOME/harbor_tasks/${{ matrix.task }}
-          done
+          echo "Running GPT-5 evaluation ${{ matrix.run_number }}/5..."
+          harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p $HOME/harbor_tasks/${{ matrix.task }}
 
       - name: Upload GPT-5 results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: difficulty-gpt-${{ matrix.task }}-results
+          name: difficulty-gpt-${{ matrix.task }}-run${{ matrix.run_number }}-results
           path: |
             $HOME/jobs/**
             $HOME/harbor_tasks/**/*.log
@@ -435,10 +429,11 @@ jobs:
       needs.detect-changed-tasks.outputs.has_tasks == 'true'
       && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 10
     strategy:
       matrix:
         task: ${{ fromJson(needs.detect-changed-tasks.outputs.tasks) }}
+        run_number: [1, 2, 3, 4, 5]  # Run 5 parallel evaluations
       fail-fast: false
 
     steps:
@@ -482,27 +477,20 @@ jobs:
           mkdir -p $HOME/harbor_tasks/${{ matrix.task }}
           cp -r tasks/${{ matrix.task }}/* $HOME/harbor_tasks/${{ matrix.task }}/
 
-      - name: Run Claude Sonnet 4.5 Difficulty Eval
+      - name: Run Claude Sonnet 4.5 Difficulty Eval (Run ${{ matrix.run_number }}/5)
         run: |
           set -euo pipefail
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
-          # Run 1 iteration for fast feedback
-          # Can increase to 3-5 runs later if statistical confidence needed
-          RUN_COUNT=1
-          echo "Running 1 iteration for fast feedback"
-
-          for i in $(seq 1 $RUN_COUNT); do
-            echo "Claude run $i/$RUN_COUNT..."
-            harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
-          done
+          echo "Running Claude evaluation ${{ matrix.run_number }}/5..."
+          harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
 
       - name: Upload Claude results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: difficulty-claude-${{ matrix.task }}-results
+          name: difficulty-claude-${{ matrix.task }}-run${{ matrix.run_number }}-results
           path: |
             $HOME/jobs/**
             $HOME/harbor_tasks/**/*.log
@@ -530,30 +518,40 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Download GPT-5 results
+      - name: Download all GPT-5 results
         uses: actions/download-artifact@v4
         with:
-          name: difficulty-gpt-${{ matrix.task }}-results
+          pattern: difficulty-gpt-${{ matrix.task }}-run*-results
           path: $HOME/gpt-results
+          merge-multiple: true
         continue-on-error: true
 
-      - name: Download Claude results
+      - name: Download all Claude results
         uses: actions/download-artifact@v4
         with:
-          name: difficulty-claude-${{ matrix.task }}-results
+          pattern: difficulty-claude-${{ matrix.task }}-run*-results
           path: $HOME/claude-results
+          merge-multiple: true
         continue-on-error: true
 
       - name: Merge results and calculate difficulty
         run: |
           # Merge results from both models into a single jobs directory
           mkdir -p $HOME/jobs
-          if [ -d "$HOME/gpt-results/jobs" ]; then
-            cp -r $HOME/gpt-results/jobs/* $HOME/jobs/ 2>/dev/null || true
+          
+          echo "Merging GPT-5 results..."
+          if [ -d "$HOME/gpt-results" ]; then
+            find $HOME/gpt-results -type d -name "jobs" -exec cp -r {}/* $HOME/jobs/ 2>/dev/null \; || true
           fi
-          if [ -d "$HOME/claude-results/jobs" ]; then
-            cp -r $HOME/claude-results/jobs/* $HOME/jobs/ 2>/dev/null || true
+          
+          echo "Merging Claude results..."
+          if [ -d "$HOME/claude-results" ]; then
+            find $HOME/claude-results -type d -name "jobs" -exec cp -r {}/* $HOME/jobs/ 2>/dev/null \; || true
           fi
+          
+          # Count total result files
+          RESULT_COUNT=$(find "$HOME/jobs" -name "result.json" -type f 2>/dev/null | wc -l)
+          echo "Total result files collected: $RESULT_COUNT (expected: 10)"
 
       - name: Calculate and Display Difficulty Rating
         if: always()
