@@ -11,8 +11,8 @@ import hashlib
 import base64
 
 CANARY_STRING = "CRACKED_BY_TERMINUS_AGENT_2026"
-EXPECTED_VALID_HASHES = 15  # Oracle generates exactly 15 valid PBKDF2 entries (reduced for sub-30min pipeline)
-EXPECTED_MALFORMED_HASHES = 5  # Oracle inserts exactly 5 malformed entries
+EXPECTED_VALID_HASHES = 10  # Oracle generates exactly 10 valid PBKDF2 entries (minimal viable)
+EXPECTED_MALFORMED_HASHES = 3  # Oracle inserts exactly 3 malformed entries
 
 
 def test_output_file_exists():
@@ -219,9 +219,9 @@ def test_hashes_file_integrity():
         f"Expected exactly {EXPECTED_MALFORMED_HASHES} malformed entries, found {malformed_count}. " \
         f"File may have been tampered with."
 
-    # Verify usernames follow expected pattern (user001-user015)
-    # The oracle generates user001-user021 explicitly, then extends to [:15] giving us user001-user015
-    expected_users = {f'user{i:03d}' for i in range(1, 16)}
+    # Verify usernames follow expected pattern (user001-user010)
+    # The oracle generates user001-user021 explicitly, then extends to [:10] giving us user001-user010
+    expected_users = {f'user{i:03d}' for i in range(1, 11)}
     assert valid_usernames == expected_users, \
         f"Username set doesn't match expected pattern. " \
         f"Missing: {expected_users - valid_usernames}, " \

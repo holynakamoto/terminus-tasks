@@ -90,20 +90,20 @@ for i in range(22, 75):
     ])
     password_patterns.append((f'user{i:03d}', base, transforms))
 
-# OPTIMIZED FOR SUB-30MIN PIPELINE: Lower iteration counts
-# Max 10000 instead of 500000 (50x reduction)
+# OPTIMIZED FOR SUB-30MIN PIPELINE: Minimal viable task
+# Max 10000 iterations, only 10 hashes
 iteration_counts = [
-    1000, 1000, 1000, 1000, 1000,      # Low (5)
-    5000, 5000, 5000, 5000, 5000,      # Medium (5)
-    10000, 10000, 10000, 10000, 10000, # High (5) - max iteration count
+    1000, 1000, 1000,      # Low (3)
+    5000, 5000, 5000,      # Medium (3)
+    10000, 10000, 10000, 10000, # High (4)
 ]
 
 hashes = []
 
-print(f"[DEBUG] Generating {len(password_patterns[:15])} password hashes...")
+print(f"[DEBUG] Generating {len(password_patterns[:10])} password hashes...")
 
 # Generate valid hashes
-for i, (username, base_word, password) in enumerate(password_patterns[:15]):
+for i, (username, base_word, password) in enumerate(password_patterns[:10]):
     iterations = iteration_counts[i % len(iteration_counts)]
 
     # Some entries have empty salts (edge case)

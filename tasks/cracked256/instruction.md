@@ -52,7 +52,7 @@ The dictionary file `/app/dictionary.txt` contains base password candidates (one
 - Parse the hash format carefully: `pbkdf2_sha256$iterations$salt$hash`
 - Decode base64 salt and hash using `base64.b64decode()`
 - Empty salts are possible (handle `salt_b64 = ''`)
-- Target at least 30% crack rate (5+ out of 15 valid hashes)
+- Target at least 30% crack rate (3+ out of 10 valid hashes)
 - At least 40% of cracked passwords must demonstrate combined transformations (e.g., `P@ssw0rd123!`)
 
 ## Constraints

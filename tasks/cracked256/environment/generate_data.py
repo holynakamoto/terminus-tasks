@@ -15,9 +15,9 @@ import base64
 import random
 
 # Constants matching test expectations
-EXPECTED_VALID_HASHES = 15  # Must match test_outputs.py (reduced for sub-30min pipeline)
-EXPECTED_MALFORMED_HASHES = 5  # Must match test_outputs.py
-EXTENDED_PATTERN_COUNT = 25  # Generate extra patterns, use first 15
+EXPECTED_VALID_HASHES = 10  # Must match test_outputs.py (minimal viable for sub-30min pipeline)
+EXPECTED_MALFORMED_HASHES = 3  # Must match test_outputs.py
+EXTENDED_PATTERN_COUNT = 20  # Generate extra patterns, use first 10
 
 # Base dictionary words (reduced to 12 for faster eval times)
 base_words = [
@@ -83,15 +83,13 @@ for i in range(len(password_patterns) + 1, EXTENDED_PATTERN_COUNT + 1):
     ])
     password_patterns.append((f'user{i:03d}', base, transforms))
 
-# OPTIMIZED FOR SUB-30MIN PIPELINE: Lower iteration counts (max 10000 instead of 500000)
-# Production systems should use 600,000+ iterations (OWASP 2023 recommendation)
-# Distribution: 5 at each count (1k, 5k, 10k) = 15 values total
-# CRITICAL: Uses modulo (i % 15) to cycle through counts for 15 hashes
-# This MUST match oracle's approach - even distribution would create wrong test data
+# OPTIMIZED FOR SUB-30MIN PIPELINE: Minimal viable task
+# Max 10000 iterations, only 10 hashes
+# Distribution: 10 values cycling through 3 levels
 iteration_counts = [
-    1000, 1000, 1000, 1000, 1000,      # Low (5)
-    5000, 5000, 5000, 5000, 5000,      # Medium (5)
-    10000, 10000, 10000, 10000, 10000, # High (5) - max iteration count
+    1000, 1000, 1000,      # Low (3)
+    5000, 5000, 5000,      # Medium (3)
+    10000, 10000, 10000, 10000, # High (4)
 ]
 
 hashes = []
@@ -119,11 +117,9 @@ for i, (username, base_word, password) in enumerate(password_patterns[:EXPECTED_
 
 # Add malformed entries (debugging traps) - inserted at specific positions to test error handling
 malformed_entries = [
-    (55, "baduser4:bcrypt$12$c2FsdDEyMzQ=$aGFzaGRhdGE="),  # Wrong algorithm
-    (40, "baduser3:pbkdf2_sha256$50000$c2FsdA!!!$dGVzdGhhc2g="),  # Invalid base64
-    (30, "baduser5:argon2$m=65536,t=3,p=4$c2FsdA==$aGFzaA=="),  # Wrong algorithm
-    (25, "baduser2:pbkdf2_sha256$10000$c2FsdA=="),  # Missing hash component
-    (10, "baduser1:pbkdf2_sha256$100,000x$c2FsdA$aGFzaA=="),  # Invalid iteration count
+    (8, "baduser3:pbkdf2_sha256$50000$c2FsdA!!!$dGVzdGhhc2g="),  # Invalid base64
+    (5, "baduser2:pbkdf2_sha256$10000$c2FsdA=="),  # Missing hash component
+    (2, "baduser1:pbkdf2_sha256$100,000x$c2FsdA$aGFzaA=="),  # Invalid iteration count
 ]
 
 for position, entry in malformed_entries:

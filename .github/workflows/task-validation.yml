@@ -364,9 +364,9 @@ jobs:
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
-          # Run 5 times to establish a reliable pass rate
-          for i in {1..5}; do
-            echo "GPT-5 run $i/5..."
+          # Run 3 times for sub-30min pipeline (reduced from 5)
+          for i in {1..3}; do
+            echo "GPT-5 run $i/3..."
             harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p $HOME/harbor_tasks/${{ matrix.task }}
           done
 
@@ -376,10 +376,9 @@ jobs:
           export OPENAI_API_KEY="${{ secrets.PORTKEY_API_KEY }}"
           export OPENAI_BASE_URL="https://api.portkey.ai/v1"
 
-          # Run 5 times to establish a reliable pass rate
-          # Exit on first failure to surface errors immediately
-          for i in {1..5}; do
-            echo "Claude run $i/5..."
+          # Run 3 times for sub-30min pipeline (reduced from 5)
+          for i in {1..3}; do
+            echo "Claude run $i/3..."
             harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p $HOME/harbor_tasks/${{ matrix.task }}
           done
 
