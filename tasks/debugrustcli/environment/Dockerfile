@@ -12,8 +12,8 @@ RUN apt-get update && \
 
 # Install uv (required by Harbor for test runner)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    mv /root/.cargo/bin/uv /usr/local/bin/uv && \
-    mv /root/.cargo/bin/uvx /usr/local/bin/uvx
+    mv /root/.local/bin/uv /usr/local/bin/uv && \
+    mv /root/.local/bin/uvx /usr/local/bin/uvx
 
 WORKDIR /app
 
