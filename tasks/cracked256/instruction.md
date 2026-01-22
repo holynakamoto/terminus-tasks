@@ -61,3 +61,4 @@ The dictionary file `/app/dictionary.txt` contains base password candidates (one
 - Output file must be a regular file (not a symlink)
 - Do not modify input files
 - Complete within timeout (15 minutes)
+
