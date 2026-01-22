@@ -224,7 +224,7 @@ let json_str = std::str::from_utf8(data)
 **Hint 4:** Add trait bounds to generic functions:
 ```rust
 fn print_error<T: std::fmt::Display>(err: T) {
-    println!("Error: {}", err);
+    eprintln!("Error: {}", err);
 }
 ```
 
