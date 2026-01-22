@@ -107,6 +107,9 @@ fn main() {
 }
 EOF
 
+echo "=== Cleaning previous build artifacts ==="
+cargo clean
+
 echo "=== Building the fixed code ==="
 cargo build --release
 
