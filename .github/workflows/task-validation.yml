@@ -662,6 +662,7 @@ jobs:
           echo "Detailed results for each check can be found in the sections above." >> $GITHUB_STEP_SUMMARY
 
       - name: Download LLMaJ results
+        if: needs.static-checks.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: llmaj-${{ matrix.task }}-results
@@ -669,6 +670,7 @@ jobs:
         continue-on-error: true
 
       - name: Download Difficulty MD
+        if: needs.validate-difficulty-summary.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: difficulty-${{ matrix.task }}-results
