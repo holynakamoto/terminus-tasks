@@ -678,21 +678,58 @@ jobs:
       - name: Append Detailed Results to Summary
         if: always()
         run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
           # Find and append LLMaJ Results
           if [ -d "$HOME/llmaj" ]; then
-            LLMAJ_PATH=$(find $HOME/llmaj -name "${{ matrix.task }}_llmaj.json" | head -1)
+            LLMAJ_PATH=$(find $HOME/llmaj -name "${{ matrix.task }}_llmaj.json" 2>/dev/null | head -1)
             if [ -n "$LLMAJ_PATH" ] && [ -f "$LLMAJ_PATH" ]; then
-              echo "---" >> $GITHUB_STEP_SUMMARY
               echo "### 📋 LLMaJ Check Details" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
               python3 .github/scripts/parse-llmaj-results.py "$LLMAJ_PATH" "${{ matrix.task }}" >> $GITHUB_STEP_SUMMARY 2>&1
+            else
+              echo "### 📋 LLMaJ Check Details" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ LLMaJ results file not found in artifact" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "### 📋 LLMaJ Check Details" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ needs.static-checks.result }}" = "skipped" ]; then
+              echo "⏭️ Static checks were skipped" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.static-checks.result }}" = "failure" ]; then
+              echo "❌ Static checks failed - see job logs for details" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ LLMaJ artifact not available" >> $GITHUB_STEP_SUMMARY
             fi
           fi
 
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
           # Find and append Difficulty Results
           if [ -d "$HOME/difficulty" ]; then
-            DIFF_PATH=$(find $HOME/difficulty -name "${{ matrix.task }}_difficulty.md" | head -1)
+            DIFF_PATH=$(find $HOME/difficulty -name "${{ matrix.task }}_difficulty.md" 2>/dev/null | head -1)
             if [ -n "$DIFF_PATH" ] && [ -f "$DIFF_PATH" ]; then
-              echo "---" >> $GITHUB_STEP_SUMMARY
               cat "$DIFF_PATH" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### 📊 Difficulty Evaluation" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ Difficulty results file not found in artifact" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "### 📊 Difficulty Evaluation" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ needs.validate-difficulty-summary.result }}" = "skipped" ]; then
+              echo "⏭️ **Difficulty evaluation skipped** (only runs on main branch)" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "To run difficulty evaluation on this PR, manually trigger the workflow with \`workflow_dispatch\`." >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.validate-difficulty-summary.result }}" = "failure" ]; then
+              echo "❌ Difficulty evaluation failed - see job logs for details" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ Difficulty artifact not available" >> $GITHUB_STEP_SUMMARY
             fi
           fi
