@@ -40,24 +40,31 @@ impl std::error::Error for ParseError {}
 // Fixed: Returns String instead of &str to avoid lifetime issues
 fn get_json_source(args: &Vec<String>) -> Result<String, ParseError> {
     if args.len() > 1 {
-        // Read file and handle errors properly
+        // Read file and handle errors properly (including invalid UTF-8)
         fs::read_to_string(&args[1])
-            .map_err(|e| ParseError::new(&format!("Failed to read file '{}': {}", args[1], e)))
+            .map_err(|e| {
+                // Check if it's a UTF-8 error
+                if e.kind() == io::ErrorKind::InvalidData {
+                    ParseError::new("Invalid UTF-8 in input")
+                } else {
+                    ParseError::new(&format!("Failed to read file '{}': {}", args[1], e))
+                }
+            })
     } else {
-        // Read from stdin and handle errors properly
+        // Read from stdin and handle errors properly (including invalid UTF-8)
         let mut buffer = String::new();
         io::stdin()
             .read_to_string(&mut buffer)
-            .map_err(|e| ParseError::new(&format!("Failed to read from stdin: {}", e)))?;
+            .map_err(|e| {
+                // Check if it's a UTF-8 error
+                if e.kind() == io::ErrorKind::InvalidData {
+                    ParseError::new("Invalid UTF-8 in input")
+                } else {
+                    ParseError::new(&format!("Failed to read from stdin: {}", e))
+                }
+            })?;
         Ok(buffer)
     }
-}
-
-// Function that handles UTF-8 errors gracefully
-fn validate_utf8(data: &[u8]) -> Result<String, ParseError> {
-    std::str::from_utf8(data)
-        .map(|s| s.to_string())
-        .map_err(|_| ParseError::new("Invalid UTF-8 in input"))
 }
 
 // Function with proper trait bound (Display)
@@ -80,7 +87,7 @@ fn parse_and_format(json_str: &str) -> Result<String, ParseError> {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    // Get JSON source with proper error handling
+    // Get JSON source with proper error handling (including UTF-8 validation)
     let json_input = match get_json_source(&args) {
         Ok(input) => input,
         Err(e) => {
@@ -89,19 +96,8 @@ fn main() {
         }
     };
 
-    // Validate UTF-8 with proper error handling (though String is already UTF-8)
-    // This is redundant for String but shows the concept
-    let json_bytes = json_input.as_bytes();
-    let json_str = match validate_utf8(json_bytes) {
-        Ok(s) => s,
-        Err(e) => {
-            print_error(e);
-            std::process::exit(1);
-        }
-    };
-
     // Parse and format with proper error handling
-    match parse_and_format(&json_str) {
+    match parse_and_format(&json_input) {
         Ok(formatted) => println!("{}", formatted),
         Err(e) => {
             print_error(e);
@@ -114,24 +110,5 @@ EOF
 echo "=== Building the fixed code ==="
 cargo build --release
 
-echo "=== Testing the fix ==="
-
-# Test 1: Valid JSON from stdin
-echo "Test 1: Valid JSON from stdin"
-echo '{"name":"Alice","age":30}' | ./target/release/json-parser
-
-# Test 2: Invalid JSON
-echo "Test 2: Invalid JSON (should show error)"
-echo '{invalid}' | ./target/release/json-parser || echo "Correctly handled error"
-
-# Test 3: File input
-echo "Test 3: File input"
-echo '{"test":true}' > /tmp/test.json
-./target/release/json-parser /tmp/test.json
-
-# Test 4: Invalid UTF-8 (simulate by creating a file with invalid UTF-8)
-echo "Test 4: Invalid UTF-8 in file (should handle gracefully)"
-printf '\xff\xfe{"test":true}' > /tmp/bad_utf8.json
-./target/release/json-parser /tmp/bad_utf8.json || echo "Correctly handled UTF-8 error"
-
-echo "=== All fixes applied and tested successfully ==="
+echo "=== Solution applied successfully ==="
+echo "Binary built at: /app/target/release/json-parser"
