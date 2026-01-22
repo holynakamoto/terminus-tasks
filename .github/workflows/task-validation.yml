@@ -190,8 +190,8 @@ jobs:
         with:
           name: llmaj-${{ matrix.task }}-results
           path: |
-            $HOME/${{ matrix.task }}_llmaj.json
-            $HOME/${{ matrix.task }}_llmaj_output.log
+            ~/${{ matrix.task }}_llmaj.json
+            ~/${{ matrix.task }}_llmaj_output.log
           if-no-files-found: ignore
 
   validate-oracle:
@@ -601,9 +601,9 @@ jobs:
         with:
           name: difficulty-${{ matrix.task }}-results
           path: |
-            $HOME/gpt-results/**
-            $HOME/claude-results/**
-            $HOME/${{ matrix.task }}_difficulty.md
+            ~/gpt-results/**
+            ~/claude-results/**
+            ~/${{ matrix.task }}_difficulty.md
           retention-days: 7
           if-no-files-found: ignore
 
