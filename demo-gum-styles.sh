@@ -71,7 +71,6 @@ gum style \
 | Ruff Lint          | ✅ Passed  |
 | LLMaJ Validation   | ✅ Passed  |
 | Oracle Solution    | ✅ Passed  |
-| NOP Validation     | ✅ Passed  |
 | Difficulty Eval    | ✅ Easy    |"
 
 divider

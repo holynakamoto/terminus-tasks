@@ -46,31 +46,40 @@ divider
 progress "Running Oracle solution"
 echo ""
 
-# Capture output and exit code
+# Capture output and extract job ID
 ORACLE_OUTPUT=$(harbor run -a oracle -p "$TASK_PATH" 2>&1)
 ORACLE_EXIT=$?
+
+# Try to extract job ID from harbor output
+JOB_ID=$(echo "$ORACLE_OUTPUT" | grep -oE "job_[a-zA-Z0-9_-]+" | head -1)
 
 # Show output
 cmd-output "$ORACLE_OUTPUT"
 echo ""
 
+# Find the result file using job ID if available
+RESULT_FILE=""
+if [ -n "$JOB_ID" ]; then
+  # Try job-specific path first
+  RESULT_FILE=$(find "$HOME/jobs/$JOB_ID" -name "result.json" -type f 2>/dev/null | head -1)
+fi
+
+if [ -z "$RESULT_FILE" ]; then
+  # Fallback: find most recent result.json
+  RESULT_FILE=$(find "$HOME/jobs" -name "result.json" -type f -mtime -1 2>/dev/null | sort -r | head -1)
+fi
+
 # Check result
-if [ $ORACLE_EXIT -eq 0 ]; then
-  success "Oracle solution passed!"
+if [ $ORACLE_EXIT -eq 0 ] && [ -f "$RESULT_FILE" ]; then
+  SUCCESS=$(jq -r '.success' "$RESULT_FILE" 2>/dev/null || echo "unknown")
+  EPISODES=$(jq -r '.episodes' "$RESULT_FILE" 2>/dev/null || echo "unknown")
   
-  # Parse result if available
-  RESULT_FILE=$(find "$HOME/jobs" -name "result.json" -type f | sort -r | head -1)
-  if [ -f "$RESULT_FILE" ]; then
-    divider
-    info "Result Details"
-    
-    SUCCESS=$(jq -r '.success' "$RESULT_FILE" 2>/dev/null || echo "unknown")
-    EPISODES=$(jq -r '.episodes' "$RESULT_FILE" 2>/dev/null || echo "unknown")
-    
-    box "Success: $SUCCESS
+  divider
+  info "Result Details"
+  
+  box "Success: $SUCCESS
 Episodes: $EPISODES
 Result: $RESULT_FILE" 86
-  fi
   
   divider
   task-done "Oracle validation complete!"

@@ -25,4 +25,4 @@ harbor_tasks/
 
 # Don't ignore config
 !.terminus-validator.yaml
-!.gitignore
+!.gitignore.envrc

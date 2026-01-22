@@ -129,8 +129,19 @@ echo ""
 ORACLE_OUTPUT=$(harbor run -a oracle -p "$TASK_PATH" 2>&1)
 ORACLE_EXIT=$?
 
-# Find the most recent result file
-RESULT_FILE=$(find "$HOME/jobs" -name "result.json" -type f -newer "$TASK_PATH" 2>/dev/null | sort -r | head -1)
+# Try to extract job ID from harbor output
+JOB_ID=$(echo "$ORACLE_OUTPUT" | grep -oE "job_[a-zA-Z0-9_-]+" | head -1)
+
+# Find the result file using job ID if available
+RESULT_FILE=""
+if [ -n "$JOB_ID" ]; then
+  RESULT_FILE=$(find "$HOME/jobs/$JOB_ID" -name "result.json" -type f 2>/dev/null | head -1)
+fi
+
+if [ -z "$RESULT_FILE" ]; then
+  # Fallback: find most recent result.json
+  RESULT_FILE=$(find "$HOME/jobs" -name "result.json" -type f -mtime -1 2>/dev/null | sort -r | head -1)
+fi
 
 if [ -f "$RESULT_FILE" ]; then
   SUCCESS=$(jq -r '.success' "$RESULT_FILE" 2>/dev/null || echo "false")
@@ -204,8 +215,17 @@ if [ "$SKIP_DIFFICULTY" != "--skip-difficulty" ]; then
       GPT_OUTPUT=$(harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p "$TASK_PATH" 2>&1)
       GPT_EXIT=$?
       
-      # Find result
-      RESULT_FILE=$(find "$HOME/jobs" -name "result.json" -type f | sort -r | head -1)
+      # Extract job ID and find result
+      JOB_ID=$(echo "$GPT_OUTPUT" | grep -oE "job_[a-zA-Z0-9_-]+" | head -1)
+      RESULT_FILE=""
+      if [ -n "$JOB_ID" ]; then
+        RESULT_FILE=$(find "$HOME/jobs/$JOB_ID" -name "result.json" -type f 2>/dev/null | head -1)
+      fi
+      
+      if [ -z "$RESULT_FILE" ]; then
+        RESULT_FILE=$(find "$HOME/jobs" -name "result.json" -type f -mtime -1 2>/dev/null | sort -r | head -1)
+      fi
+      
       if [ -f "$RESULT_FILE" ]; then
         SUCCESS=$(jq -r '.success' "$RESULT_FILE" 2>/dev/null || echo "false")
         if [ "$SUCCESS" = "true" ]; then
@@ -230,8 +250,17 @@ if [ "$SKIP_DIFFICULTY" != "--skip-difficulty" ]; then
       CLAUDE_OUTPUT=$(harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p "$TASK_PATH" 2>&1)
       CLAUDE_EXIT=$?
       
-      # Find result
-      RESULT_FILE=$(find "$HOME/jobs" -name "result.json" -type f | sort -r | head -1)
+      # Extract job ID and find result
+      JOB_ID=$(echo "$CLAUDE_OUTPUT" | grep -oE "job_[a-zA-Z0-9_-]+" | head -1)
+      RESULT_FILE=""
+      if [ -n "$JOB_ID" ]; then
+        RESULT_FILE=$(find "$HOME/jobs/$JOB_ID" -name "result.json" -type f 2>/dev/null | head -1)
+      fi
+      
+      if [ -z "$RESULT_FILE" ]; then
+        RESULT_FILE=$(find "$HOME/jobs" -name "result.json" -type f -mtime -1 2>/dev/null | sort -r | head -1)
+      fi
+      
       if [ -f "$RESULT_FILE" ]; then
         SUCCESS=$(jq -r '.success' "$RESULT_FILE" 2>/dev/null || echo "false")
         if [ "$SUCCESS" = "true" ]; then
