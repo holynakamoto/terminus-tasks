@@ -21,7 +21,7 @@ WORKDIR /app
 # Set up the broken project
 
 # Copy the broken source files
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src/
 
 # Verify the broken code doesn't compile (expected to fail)
