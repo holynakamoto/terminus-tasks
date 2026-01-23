@@ -31,6 +31,9 @@ RUN echo "=== Attempting to compile broken code (expected to fail) ===" && \
     echo "=== As expected, compilation failed ===" && \
     echo "Agent must fix these errors to complete the task"
 
+# Create log directory for test output
+RUN mkdir -p /logs/verifier && chmod 777 /logs/verifier
+
 # The agent will need to:
 # 1. Fix lifetime errors
 # 2. Implement required traits
