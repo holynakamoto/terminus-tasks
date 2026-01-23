@@ -1,0 +1,13 @@
+user001:pbkdf2_sha256$1000$$SDBFZqLqPdgnL0lEuDGZS9fuIzRfv2pthaxtn1mlfto=
+user002:pbkdf2_sha256$1000$c2FsdDE=$rS3fHkwefFs4OMXH1J+Mo0ZEMiQB2NSy8+49Uk8of/U=
+baduser1:pbkdf2_sha256$100,000x$c2FsdA$aGFzaA==
+user003:pbkdf2_sha256$1000$c2FsdDI=$YL0gwCvbqhxzN6kENsaddFh21obm47UTlcayz+Vg3dA=
+user004:pbkdf2_sha256$5000$c2FsdDM=$YkXmeL0Fz0myDPrcgzgr8r30lQkGSz7PyLmSPjgR4LE=
+user005:pbkdf2_sha256$5000$c2FsdDQ=$YIvP81qgH5Me9Zvo5dZIMGm6SWTvwixPlJEAtuIOH2U=
+baduser2:pbkdf2_sha256$10000$c2FsdA==
+user006:pbkdf2_sha256$5000$c2FsdDU=$g+RQfAGW9VLMoin+LqN/S27TrOzQPwIggbDqcYAFHSs=
+user007:pbkdf2_sha256$10000$c2FsdDY=$eiD9q0nOwD2iYFHXaVC53vFkcZ/Iv4O8W/rL4rEiEFo=
+user008:pbkdf2_sha256$10000$c2FsdDc=$Y5vJ6IeJ89OHNSxOLj14oOL3QBzdaCUSGAiBGY5Y3LY=
+baduser3:pbkdf2_sha256$50000$c2FsdA!!!$dGVzdGhhc2g=
+user009:pbkdf2_sha256$10000$c2FsdDg=$eR1Hf33PybbYs4V2C8Mb9W1V1N3dwpMwpgqeVUx9Rcs=
+user010:pbkdf2_sha256$10000$c2FsdDk=$Z/1fzMj8wo8OoLuq30rRIJr9nvmVo78H0BnFdk2d0V0=

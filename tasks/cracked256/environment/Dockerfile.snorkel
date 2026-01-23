@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# No additional dependencies needed - using stdlib only (hashlib, base64, random)
+
+# Copy data generation script (will run at container startup, not build time)
+COPY generate_data.py /app/
+COPY startup.sh /app/
+
+# Make startup script executable
+RUN chmod +x /app/startup.sh
+
+# Generate data at runtime and keep container alive
+CMD ["/app/startup.sh"]
