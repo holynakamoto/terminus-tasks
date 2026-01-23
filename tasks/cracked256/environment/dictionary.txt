@@ -1,0 +1,12 @@
+password
+admin
+secret
+test
+hello
+welcome
+master
+dragon
+monkey
+letmein
+football
+iloveyou

@@ -1,0 +1,11 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy pre-generated data files (deterministic, generated with random.seed(42))
+# This eliminates build-time execution and makes Docker builds instant
+COPY hashes.txt /app/hashes.txt
+COPY dictionary.txt /app/dictionary.txt
+
+# Keep container running for harness
+CMD ["tail", "-f", "/dev/null"]
