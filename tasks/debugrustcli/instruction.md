@@ -137,13 +137,13 @@ $ echo $?
 ### Understanding Compilation Errors
 
 **Lifetime errors:**
-```
+```text
 error[E0515]: cannot return reference to local variable `file_content`
 ```
 This means you're trying to return a reference to data that will be dropped when the function returns. You need to return owned data instead.
 
 **Trait bound errors:**
-```
+```text
 error[E0277]: `ParseError` doesn't implement `std::fmt::Display`
 ```
 Your custom error type needs to implement the Display trait to be printed.
