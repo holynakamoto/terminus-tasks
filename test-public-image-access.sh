@@ -2,7 +2,9 @@
 # Test if cracked256 Docker image is publicly accessible without authentication
 # This simulates what SnorkelAI's CodeBuild would experience
 
-set -e
+# Use safer options: fail on undefined variables and pipeline failures
+# but don't exit on command failures (we handle those explicitly)
+set -u -o pipefail
 
 echo "🧪 Testing Public Docker Image Access"
 echo "======================================"
@@ -27,7 +29,7 @@ echo ""
 SUCCESS=false
 
 # Try common tags
-for TAG in "main" "latest" "$(git rev-parse HEAD | cut -c1-7)"; do
+for TAG in "main" "latest" "$(git rev-parse HEAD 2>/dev/null | cut -c1-7 || echo 'sha-unknown')"; do
     FULL_IMAGE="${IMAGE}:${TAG}"
     echo "Trying: $FULL_IMAGE"
 
@@ -44,11 +46,18 @@ for TAG in "main" "latest" "$(git rev-parse HEAD | cut -c1-7)"; do
         echo "Testing if image runs..."
         CONTAINER_ID=$(docker run -d "$FULL_IMAGE")
         sleep 2
-        if docker ps | grep -q "$CONTAINER_ID"; then
+
+        # Check if container is running (non-fatal check)
+        if docker ps -q -f id="$CONTAINER_ID" | grep -q .; then
             echo "✅ Container started successfully"
-            docker stop "$CONTAINER_ID" > /dev/null
-            docker rm "$CONTAINER_ID" > /dev/null
+            # Stop the running container
+            docker stop "$CONTAINER_ID" > /dev/null 2>&1 || true
+        else
+            echo "⚠️  Container exited (may be expected for some images)"
         fi
+
+        # Always clean up: force-remove container regardless of state
+        docker rm -f "$CONTAINER_ID" > /dev/null 2>&1 || true
 
         SUCCESS=true
         break
