@@ -15,9 +15,20 @@ echo "============================================================"
 
 START_TIME=$(date +%s)
 
-# Generate challenging test data with edge cases and debugging traps
-echo "[DEBUG] Starting data generation at $(date -Iseconds)"
-python3 << 'GENERATE_DATA'
+# ============================================================
+# CONDITIONAL DATA GENERATION
+# Skip if files already exist (Snorkel pre-generates them)
+# ============================================================
+if [ -f /app/hashes.txt ] && [ -f /app/dictionary.txt ]; then
+    echo "[DEBUG] Pre-generated data files detected (Snorkel mode)"
+    echo "[DEBUG] Skipping data generation to preserve containerized state"
+    echo "[DEBUG] hashes.txt: $(wc -l < /app/hashes.txt) lines"
+    echo "[DEBUG] dictionary.txt: $(wc -l < /app/dictionary.txt) lines"
+else
+    # Generate challenging test data with edge cases and debugging traps
+    echo "[DEBUG] No pre-existing data files found"
+    echo "[DEBUG] Starting runtime data generation at $(date -Iseconds)"
+    python3 << 'GENERATE_DATA'
 import hashlib
 import base64
 import random
@@ -154,9 +165,15 @@ print(f"[DEBUG] Iteration counts used: {sorted(set(iteration_counts))}")
 print(f"[DEBUG] Data generation completed in {elapsed:.2f}s")
 GENERATE_DATA
 
-DATA_GEN_TIME=$(date +%s)
-echo "[DEBUG] Data generation completed at $(date -Iseconds)"
-echo "[DEBUG] Data generation took $((DATA_GEN_TIME - START_TIME)) seconds"
+    DATA_GEN_TIME=$(date +%s)
+    echo "[DEBUG] Runtime data generation completed at $(date -Iseconds)"
+    echo "[DEBUG] Data generation took $((DATA_GEN_TIME - START_TIME)) seconds"
+fi
+
+# Display data file info (works for both pre-generated and runtime-generated)
+echo "[DEBUG] Final data files:"
+echo "[DEBUG] - hashes.txt: $(wc -l < /app/hashes.txt) lines, $(stat -c%s /app/hashes.txt 2>/dev/null || stat -f%z /app/hashes.txt 2>/dev/null || echo 'unknown') bytes"
+echo "[DEBUG] - dictionary.txt: $(wc -l < /app/dictionary.txt) lines"
 
 # Oracle solution: optimized cracker for 1 CPU
 echo "[DEBUG] Starting password cracker at $(date -Iseconds)"
@@ -253,6 +270,50 @@ def generate_mangled_passwords(base_word):
         for sym in ['!', '@', '#']:
             candidates.add(leet_cap + num + sym)
             candidates.add(leet_word + num + sym)
+
+    # MISSING PATTERN FIX: leet_cap + single symbol (no number)
+    # Handles user006: P@ssw0rd!, user007: T3st@
+    for sym in ['!', '@', '#', '$']:
+        candidates.add(leet_cap + sym)
+        candidates.add(leet_word + sym)
+
+    # PARTIAL LEET FIX: Generate variations with subset of leet rules
+    # Some passwords use partial leet (e.g., only a→@ and o→0, but not s→$)
+    # This handles cases like P@ssw0rd123! (not P@$$w0rd123!)
+    partial_leet_maps = [
+        {'a': '@', 'o': '0'},  # Common: admin → @dm1n (but 'i' stays as 'i' initially)
+        {'a': '@'},            # Minimal: password → p@ssword
+        {'e': '3'},            # test → t3st
+        {'o': '0'},            # password → passw0rd
+        {'i': '1'},            # admin → adm1n
+    ]
+
+    for partial_map in partial_leet_maps:
+        def apply_partial_leet(word):
+            result = word
+            for char, repl in partial_map.items():
+                result = result.replace(char, repl)
+            return result
+
+        partial_leet = apply_partial_leet(base_word)
+        partial_leet_cap = apply_partial_leet(base_word.capitalize())
+
+        if partial_leet != base_word:
+            candidates.add(partial_leet)
+            candidates.add(partial_leet_cap)
+
+            # Add with symbols ONLY (no numbers) - handles P@ssw0rd!, T3st@
+            for sym in ['!', '@', '#', '$']:
+                candidates.add(partial_leet_cap + sym)
+
+            # Add with common suffixes
+            for suffix in ['123', '456', '2024', '2025', '2026']:
+                candidates.add(partial_leet + suffix)
+                candidates.add(partial_leet_cap + suffix)
+
+                # With numbers + symbols combo
+                for sym in ['!', '@', '#']:
+                    candidates.add(partial_leet_cap + suffix + sym)
 
     # Title case for compound words
     if len(base_word) > 6:
