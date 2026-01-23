@@ -1,16 +1,17 @@
 FROM rust:1.83-slim-bookworm
 
-# Install basic build tools, Python, and uv for testing
+# Install Python, pip, curl and build essentials
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
+    python3-venv \
     curl \
     ca-certificates \
     && \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv (required by Harbor for test runner)
+# Install uv for Harbor compatibility
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     mv /root/.local/bin/uv /usr/local/bin/uv && \
     mv /root/.local/bin/uvx /usr/local/bin/uvx

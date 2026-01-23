@@ -17,13 +17,12 @@ if [ ! -d /app ]; then
 fi
 cd /app
 
-# Run pytest using uv (Harbor requirement)
-# Install pytest and pytest-json-ctrf using uv
+# Run pytest using uvx (Harbor requirement)
 set +e
 uvx \
-  -p 3.11 \
-  -w pytest==8.3.4 \
-  -w pytest-json-ctrf==0.3.5 \
+  --python 3.11 \
+  --with pytest==8.3.4 \
+  --with pytest-json-ctrf==0.3.5 \
   pytest --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -v --tb=short --color=yes -rA
 pytest_status=$?
 set -e
