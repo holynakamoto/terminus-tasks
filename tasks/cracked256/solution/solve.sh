@@ -16,18 +16,50 @@ echo "============================================================"
 START_TIME=$(date +%s)
 
 # ============================================================
-# CONDITIONAL DATA GENERATION
-# Skip if files already exist (Snorkel pre-generates them)
+# ENVIRONMENT DETECTION
+# Explicit mode selection via EVAL_MODE environment variable
 # ============================================================
-if [ -f /app/hashes.txt ] && [ -f /app/dictionary.txt ]; then
-    echo "[DEBUG] Pre-generated data files detected (Snorkel mode)"
-    echo "[DEBUG] Skipping data generation to preserve containerized state"
+# EVAL_MODE values:
+#   - "snorkel": Use pre-generated data (fast builds, production eval)
+#   - "github":  Generate at runtime (flexible, CI/CD)
+#   - "auto":    Auto-detect based on file presence (default)
+EVAL_MODE=${EVAL_MODE:-auto}
+
+echo "[DEBUG] Environment mode: $EVAL_MODE"
+
+# Determine if we should use pre-generated data
+USE_PREGENERATED=false
+
+if [ "$EVAL_MODE" = "snorkel" ]; then
+    USE_PREGENERATED=true
+    echo "[DEBUG] Explicit Snorkel mode - using pre-generated data"
+elif [ "$EVAL_MODE" = "github" ]; then
+    USE_PREGENERATED=false
+    echo "[DEBUG] Explicit GitHub mode - generating data at runtime"
+elif [ "$EVAL_MODE" = "auto" ]; then
+    if [ -f /app/hashes.txt ] && [ -f /app/dictionary.txt ]; then
+        USE_PREGENERATED=true
+        echo "[DEBUG] Auto-detected Snorkel environment (data files present)"
+    else
+        USE_PREGENERATED=false
+        echo "[DEBUG] Auto-detected GitHub environment (no data files)"
+    fi
+else
+    echo "[ERROR] Invalid EVAL_MODE: $EVAL_MODE (expected: snorkel|github|auto)"
+    exit 1
+fi
+
+# ============================================================
+# CONDITIONAL DATA GENERATION
+# ============================================================
+if [ "$USE_PREGENERATED" = "true" ]; then
+    echo "[DEBUG] Using pre-generated data files"
     echo "[DEBUG] hashes.txt: $(wc -l < /app/hashes.txt) lines"
     echo "[DEBUG] dictionary.txt: $(wc -l < /app/dictionary.txt) lines"
 else
     # Generate challenging test data with edge cases and debugging traps
-    echo "[DEBUG] No pre-existing data files found"
-    echo "[DEBUG] Starting runtime data generation at $(date -Iseconds)"
+    echo "[DEBUG] Generating data at runtime"
+    echo "[DEBUG] Starting data generation at $(date -Iseconds)"
     python3 << 'GENERATE_DATA'
 import hashlib
 import base64
@@ -175,250 +207,26 @@ echo "[DEBUG] Final data files:"
 echo "[DEBUG] - hashes.txt: $(wc -l < /app/hashes.txt) lines, $(stat -c%s /app/hashes.txt 2>/dev/null || stat -f%z /app/hashes.txt 2>/dev/null || echo 'unknown') bytes"
 echo "[DEBUG] - dictionary.txt: $(wc -l < /app/dictionary.txt) lines"
 
-# Oracle solution: optimized cracker for 1 CPU
+# Oracle solution: optimized cracker
 echo "[DEBUG] Starting password cracker at $(date -Iseconds)"
-python3 << 'CRACKER_SCRIPT'
-import hashlib
-import base64
-import csv
-from collections import defaultdict
-import time
-import sys
 
-overall_start = time.time()
-print(f"[DEBUG] Cracker script started")
-print(f"[DEBUG] Python version: {sys.version}")
+# Copy cracker script to /app if running from solution directory
+if [ -f "$(dirname "$0")/crack_passwords.py" ]; then
+    cp "$(dirname "$0")/crack_passwords.py" /tmp/crack_passwords.py
+    CRACKER_SCRIPT="/tmp/crack_passwords.py"
+elif [ -f "/solution/crack_passwords.py" ]; then
+    CRACKER_SCRIPT="/solution/crack_passwords.py"
+else
+    echo "[ERROR] crack_passwords.py not found"
+    exit 1
+fi
 
-def log_progress(msg):
-    elapsed = time.time() - overall_start
-    print(f"[DEBUG] [{elapsed:7.1f}s] {msg}")
+# Run the cracker with environment variables
+export CPUS=${CPUS:-1}
+export PARALLEL_CRACKING=${PARALLEL_CRACKING:-false}
 
-def parse_hash_line(line):
-    """Parse a hash line with robust error handling."""
-    line = line.strip()
-    if not line:
-        return None
+python3 "$CRACKER_SCRIPT"
 
-    try:
-        username, hash_part = line.split(':', 1)
-    except ValueError:
-        return None
-
-    parts = hash_part.split('$')
-
-    if len(parts) < 4 or parts[0] != 'pbkdf2_sha256':
-        return None
-
-    try:
-        iterations_str = parts[1].replace(',', '')
-        iterations = int(iterations_str)
-        salt_b64 = parts[2]
-        hash_b64 = parts[3]
-
-        if salt_b64:
-            salt = base64.b64decode(salt_b64)
-        else:
-            salt = b''
-
-        target_hash = base64.b64decode(hash_b64)
-
-        return {
-            'username': username,
-            'iterations': iterations,
-            'salt': salt,
-            'target_hash': target_hash,
-        }
-    except (ValueError, base64.binascii.Error):
-        return None
-
-def generate_mangled_passwords(base_word):
-    """Generate mangled variations - OPTIMIZED for fewer candidates."""
-    candidates = set()
-
-    # Original and basic transforms
-    candidates.add(base_word)
-    candidates.add(base_word.capitalize())
-    candidates.add(base_word.upper())
-
-    # Common suffixes (reduced set)
-    suffixes = ['123', '456', '999', '!', '@', '#']
-    years = ['2024', '2025', '2026']
-
-    for suffix in suffixes + years:
-        candidates.add(base_word + suffix)
-        candidates.add(base_word.capitalize() + suffix)
-        candidates.add(base_word.upper() + suffix)
-
-    # Leet speak
-    leet_map = {'a': '@', 'e': '3', 'i': '1', 'o': '0', 's': '$'}
-    
-    def apply_leet(word):
-        result = word
-        for char, repl in leet_map.items():
-            result = result.replace(char, repl)
-        return result
-
-    leet_word = apply_leet(base_word)
-    if leet_word != base_word:
-        candidates.add(leet_word)
-        for suffix in ['123', '456', '!']:
-            candidates.add(leet_word + suffix)
-
-    # Capitalize + leet combinations
-    leet_cap = apply_leet(base_word.capitalize())
-    for num in ['123', '2024', '2025', '2026']:
-        for sym in ['!', '@', '#']:
-            candidates.add(leet_cap + num + sym)
-            candidates.add(leet_word + num + sym)
-
-    # MISSING PATTERN FIX: leet_cap + single symbol (no number)
-    # Handles user006: P@ssw0rd!, user007: T3st@
-    for sym in ['!', '@', '#', '$']:
-        candidates.add(leet_cap + sym)
-        candidates.add(leet_word + sym)
-
-    # PARTIAL LEET FIX: Generate variations with subset of leet rules
-    # Some passwords use partial leet (e.g., only a→@ and o→0, but not s→$)
-    # This handles cases like P@ssw0rd123! (not P@$$w0rd123!)
-    partial_leet_maps = [
-        {'a': '@', 'o': '0'},  # Common: admin → @dm1n (but 'i' stays as 'i' initially)
-        {'a': '@'},            # Minimal: password → p@ssword
-        {'e': '3'},            # test → t3st
-        {'o': '0'},            # password → passw0rd
-        {'i': '1'},            # admin → adm1n
-    ]
-
-    for partial_map in partial_leet_maps:
-        def apply_partial_leet(word):
-            result = word
-            for char, repl in partial_map.items():
-                result = result.replace(char, repl)
-            return result
-
-        partial_leet = apply_partial_leet(base_word)
-        partial_leet_cap = apply_partial_leet(base_word.capitalize())
-
-        if partial_leet != base_word:
-            candidates.add(partial_leet)
-            candidates.add(partial_leet_cap)
-
-            # Add with symbols ONLY (no numbers) - handles P@ssw0rd!, T3st@
-            for sym in ['!', '@', '#', '$']:
-                candidates.add(partial_leet_cap + sym)
-
-            # Add with common suffixes
-            for suffix in ['123', '456', '2024', '2025', '2026']:
-                candidates.add(partial_leet + suffix)
-                candidates.add(partial_leet_cap + suffix)
-
-                # With numbers + symbols combo
-                for sym in ['!', '@', '#']:
-                    candidates.add(partial_leet_cap + suffix + sym)
-
-    # Title case for compound words
-    if len(base_word) > 6:
-        mid = len(base_word) // 2
-        title_case = base_word[:mid].capitalize() + base_word[mid:].capitalize()
-        candidates.add(title_case)
-
-    return list(candidates)
-
-# Read and parse hashes
-log_progress("Reading hashes file...")
-with open('/app/hashes.txt', 'r') as f:
-    hash_lines = f.readlines()
-
-clusters = defaultdict(list)
-parsed_count = 0
-skipped_count = 0
-
-for line in hash_lines:
-    hash_info = parse_hash_line(line)
-    if hash_info:
-        clusters[hash_info['iterations']].append(hash_info)
-        parsed_count += 1
-    else:
-        skipped_count += 1
-
-log_progress(f"Parsed {parsed_count} valid hashes, skipped {skipped_count} malformed")
-log_progress(f"Iteration clusters: {sorted(clusters.keys())}")
-
-# Read dictionary and generate candidates
-log_progress("Generating password candidates...")
-with open('/app/dictionary.txt', 'r') as f:
-    base_words = [line.strip() for line in f if line.strip()]
-
-all_candidates = set()
-for word in base_words:
-    all_candidates.update(generate_mangled_passwords(word))
-
-all_candidates = list(all_candidates)
-log_progress(f"Generated {len(all_candidates)} unique candidates from {len(base_words)} base words")
-
-# SEQUENTIAL cracking (optimized for 1 CPU)
-cracked = []
-total_hashes = sum(len(h) for h in clusters.values())
-cracked_so_far = 0
-
-# Process clusters in order of iteration count (fastest first)
-for iterations in sorted(clusters.keys()):
-    hash_list = clusters[iterations]
-    cluster_start = time.time()
-    
-    log_progress(f"Processing cluster iterations={iterations} ({len(hash_list)} hashes)...")
-    
-    # Build lookup table
-    hash_lookup = {}
-    for hash_info in hash_list:
-        key = (hash_info['salt'], hash_info['target_hash'])
-        hash_lookup[key] = hash_info['username']
-    
-    salts_in_cluster = list(set(h['salt'] for h in hash_list))
-    cluster_cracked = 0
-    
-    for idx, password in enumerate(all_candidates):
-        password_bytes = password.encode('utf-8')
-        
-        for salt in salts_in_cluster:
-            computed_hash = hashlib.pbkdf2_hmac(
-                'sha256',
-                password_bytes,
-                salt,
-                iterations
-            )
-            
-            key = (salt, computed_hash)
-            if key in hash_lookup:
-                username = hash_lookup[key]
-                cracked.append({'username': username, 'password': password})
-                cluster_cracked += 1
-                del hash_lookup[key]  # Remove to avoid duplicates
-        
-        # Progress every 500 candidates
-        if (idx + 1) % 500 == 0:
-            elapsed = time.time() - cluster_start
-            log_progress(f"  Cluster {iterations}: {idx+1}/{len(all_candidates)} candidates, {cluster_cracked} cracked, {elapsed:.1f}s")
-    
-    cluster_elapsed = time.time() - cluster_start
-    cracked_so_far += cluster_cracked
-    log_progress(f"Cluster {iterations} done: {cluster_cracked} cracked in {cluster_elapsed:.1f}s (total: {cracked_so_far})")
-
-# Sort and write output
-log_progress("Writing output file...")
-cracked.sort(key=lambda x: x['username'])
-
-with open('/app/cracked.csv', 'w') as f:
-    f.write('CRACKED_BY_TERMINUS_AGENT_2026\n')
-    writer = csv.DictWriter(f, fieldnames=['username', 'password'])
-    writer.writeheader()
-    writer.writerows(cracked)
-
-total_elapsed = time.time() - overall_start
-log_progress(f"COMPLETED: Cracked {len(cracked)}/{parsed_count} passwords ({100*len(cracked)/parsed_count:.1f}%)")
-log_progress(f"Total cracking time: {total_elapsed:.1f}s")
-print(f"\n[DEBUG] Output written to /app/cracked.csv")
-print(f"[DEBUG] First 5 entries: {cracked[:5]}")
-CRACKER_SCRIPT
 
 END_TIME=$(date +%s)
 TOTAL_TIME=$((END_TIME - START_TIME))

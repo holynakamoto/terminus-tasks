@@ -1,4 +1,4 @@
-version = "1.0"
+version = "1.1"
 
 [metadata]
 difficulty = "hard"
@@ -6,6 +6,7 @@ category = "security"
 tags = ["cryptography", "password-cracking", "security", "clustering", "optimization", "hard"]
 author_name = "anonymous"
 author_email = "anonymous"
+description = "PBKDF2 password cracking with mangling rules, clustering optimization, and multi-environment support"
 
 [verifier]
 timeout_sec = 1800.0
@@ -18,3 +19,14 @@ build_timeout_sec = 1600.0
 cpus = 1
 memory_mb = 4096
 storage_mb = 10240
+
+# Environment variables for runtime configuration
+[environment.variables]
+# Evaluation mode: "snorkel" (pre-generated data), "github" (runtime generation), "auto" (detect)
+EVAL_MODE = "auto"
+
+# Parallel cracking: "true" to enable multi-core execution (requires cpus > 1)
+PARALLEL_CRACKING = "false"
+
+# CPU count override (defaults to detected core count)
+# CPUS = "1"
